@@ -1,0 +1,28 @@
+{
+  "name": "laryn",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Global speech-to-text desktop app backed by Cloudflare Workers AI Gateway.",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "pnpm worker:dev:fixed",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "worker:dev": "pnpm --filter @laryn/worker dev",
+    "worker:dev:fixed": "pnpm --filter @laryn/worker dev -- --port 8787",
+    "worker:deploy": "pnpm --filter @laryn/worker run deploy",
+    "desktop:dev": "pnpm --filter @laryn/desktop dev",
+    "desktop:dev:renderer": "pnpm --filter @laryn/desktop dev:renderer",
+    "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
+    "desktop:build": "pnpm --filter @laryn/desktop build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "@types/node": "^22.15.21",
+    "eslint": "^9.27.0",
+    "typescript-eslint": "^8.48.0",
+    "typescript": "^5.8.3"
+  }
+}

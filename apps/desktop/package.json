@@ -1,0 +1,50 @@
+{
+  "name": "@laryn/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Global speech-to-text desktop client for Laryn.",
+  "author": "Laryn",
+  "type": "module",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "pnpm run dev:renderer",
+    "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:electron": "pnpm build:preload && cross-env LARYN_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "start": "electron .",
+    "build:renderer": "vite build",
+    "build:preload": "vite build --config vite.preload.config.ts",
+    "build": "pnpm build:renderer && pnpm build:preload && electron-builder --dir",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@laryn/shared": "workspace:*",
+    "@vitejs/plugin-react": "^5.0.0",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "uiohook-napi": "1.5.5",
+    "vite": "^6.3.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5",
+    "cross-env": "^10.1.0",
+    "electron": "^36.3.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.laryn.desktop",
+    "productName": "Laryn",
+    "files": [
+      "config.cjs",
+      "dist/**",
+      "dist-electron/**",
+      "main.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

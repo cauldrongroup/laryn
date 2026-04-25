@@ -1,0 +1,4 @@
+AI_GATEWAY_ID=your_gateway_name
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CLOUDFLARE_API_TOKEN=your_api_token_for_local_rest_fallback
+LARYN_DESKTOP_TOKEN=change_me_for_local_dev

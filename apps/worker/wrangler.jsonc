@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "laryn-transcribe",
+  "account_id": "6d6529fc50727497faffecc2e510e191",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-24",
+  "observability": {
+    "enabled": true
+  },
+  "ai": {
+    "binding": "AI",
+    "remote": true
+  },
+  "vars": {
+    "AI_GATEWAY_TRANSCRIPTION_MODEL": "@cf/deepgram/nova-3",
+    "AI_GATEWAY_CLEANUP_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
+    "AI_GATEWAY_CLEANUP_FALLBACK_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
+    "AI_GATEWAY_CLEANUP_PREMIUM_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "CLEANUP_TIER": "standard"
+  }
+}
