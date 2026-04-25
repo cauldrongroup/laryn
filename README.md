@@ -16,16 +16,23 @@ Copy-Item apps\desktop\.env.example apps\desktop\.env
 Copy-Item apps\worker\.dev.vars.example apps\worker\.dev.vars
 ```
 
-Set the Worker variables in `apps/worker/.dev.vars`, then start it:
+The desktop defaults to the deployed Worker:
+
+```powershell
+https://laryn-transcribe.mineperial.workers.dev
+```
+
+Only start a local Worker when you are actively developing Worker code:
 
 ```powershell
 pnpm worker:dev
 ```
 
-Set `LARYN_WORKER_URL` in `apps/desktop/.env` to the local Worker URL shown by Wrangler, then run:
+For desktop development, run the renderer and Electron app in separate terminals:
 
 ```powershell
-pnpm desktop:dev
+pnpm desktop:dev:renderer
+pnpm desktop:dev:electron
 ```
 
 ## Cloudflare

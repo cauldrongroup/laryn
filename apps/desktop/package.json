@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm run dev:renderer",
     "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:electron": "pnpm build:preload && cross-env LARYN_RENDERER_URL=http://127.0.0.1:5173 electron .",
+    "dev:electron": "pnpm build:preload && cross-env LARYN_RENDERER_URL=http://127.0.0.1:5173 LARYN_WORKER_URL=https://laryn-transcribe.mineperial.workers.dev electron .",
     "start": "electron .",
     "build:renderer": "vite build",
     "build:preload": "vite build --config vite.preload.config.ts",
