@@ -28,12 +28,13 @@ Only start a local Worker when you are actively developing Worker code:
 pnpm worker:dev
 ```
 
-For desktop development, run the renderer and Electron app in separate terminals:
+For normal desktop development, run:
 
 ```powershell
-pnpm desktop:dev:renderer
-pnpm desktop:dev:electron
+pnpm desktop:dev
 ```
+
+For hot renderer development, run `pnpm desktop:dev:renderer` in one terminal and `pnpm desktop:dev:hot` in another.
 
 ## Cloudflare
 

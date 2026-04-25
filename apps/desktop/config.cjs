@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const DEFAULTS = {
   cleanupTier: "standard",
+  desktopToken: "change_me_for_local_dev",
   hotkey: "Control+Super",
   workerUrl: "https://laryn-transcribe.mineperial.workers.dev"
 };
@@ -13,7 +14,7 @@ function loadConfig(baseDir) {
 
   const config = {
     cleanupTier: normalizeCleanupTier(process.env.LARYN_CLEANUP_TIER),
-    desktopToken: process.env.LARYN_DESKTOP_TOKEN || "",
+    desktopToken: process.env.LARYN_DESKTOP_TOKEN || DEFAULTS.desktopToken,
     hotkey: process.env.LARYN_HOTKEY || DEFAULTS.hotkey,
     rendererUrl: process.env.LARYN_RENDERER_URL || "",
     workerUrl: normalizeUrl(process.env.LARYN_WORKER_URL || DEFAULTS.workerUrl)

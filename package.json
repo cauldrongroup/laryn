@@ -6,7 +6,7 @@
   "description": "Global speech-to-text desktop app backed by Cloudflare Workers AI Gateway.",
   "packageManager": "pnpm@9.12.3",
   "scripts": {
-    "dev": "pnpm desktop:dev:renderer",
+    "dev": "pnpm desktop:dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
@@ -16,6 +16,7 @@
     "desktop:dev": "pnpm --filter @laryn/desktop dev",
     "desktop:dev:renderer": "pnpm --filter @laryn/desktop dev:renderer",
     "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
+    "desktop:dev:hot": "pnpm --filter @laryn/desktop dev:hot",
     "desktop:build": "pnpm --filter @laryn/desktop build"
   },
   "devDependencies": {
