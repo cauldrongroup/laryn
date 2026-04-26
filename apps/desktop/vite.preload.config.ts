@@ -5,8 +5,8 @@ export default defineConfig({
     emptyOutDir: false,
     lib: {
       entry: "src/preload/preload.ts",
-      formats: ["es"],
-      fileName: () => "preload.mjs"
+      formats: ["cjs"],
+      fileName: () => "preload.cjs"
     },
     outDir: "dist-electron",
     rollupOptions: {

@@ -1,11 +1,14 @@
 const { spawn } = require("node:child_process");
 const electronPath = require("electron");
+const { resolve } = require("node:path");
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 
-const child = spawn(electronPath, ["."], {
-  cwd: __dirname + "/..",
+const desktopDir = resolve(__dirname, "..");
+
+const child = spawn(electronPath, ["dist-electron/main.cjs"], {
+  cwd: desktopDir,
   env,
   stdio: "inherit"
 });

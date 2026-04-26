@@ -5,16 +5,18 @@
   "description": "Global speech-to-text desktop client for Laryn.",
   "author": "Laryn",
   "type": "module",
-  "main": "main.cjs",
+  "main": "dist-electron/main.cjs",
   "scripts": {
-    "dev": "pnpm build:renderer && pnpm build:preload && node scripts/start-electron.cjs",
+    "dev": "pnpm build:renderer && pnpm build:electron && node scripts/start-electron.cjs",
     "dev:renderer": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "dev:electron": "pnpm build:renderer && pnpm build:preload && cross-env LARYN_WORKER_URL=https://laryn-transcribe.mineperial.workers.dev node scripts/start-electron.cjs",
-    "dev:hot": "cross-env LARYN_RENDERER_URL=http://127.0.0.1:5173 LARYN_WORKER_URL=https://laryn-transcribe.mineperial.workers.dev node scripts/start-electron.cjs",
+    "dev:electron": "pnpm build:renderer && pnpm build:electron && cross-env LARYN_WORKER_URL=https://laryn-transcribe.mineperial.workers.dev node scripts/start-electron.cjs",
+    "dev:hot": "pnpm build:electron && cross-env LARYN_RENDERER_URL=http://127.0.0.1:5173 LARYN_WORKER_URL=https://laryn-transcribe.mineperial.workers.dev node scripts/dev-electron.cjs",
     "start": "node scripts/start-electron.cjs",
     "build:renderer": "vite build",
+    "build:main": "node scripts/build-main.cjs",
     "build:preload": "vite build --config vite.preload.config.ts",
-    "build": "pnpm build:renderer && pnpm build:preload && electron-builder --dir",
+    "build:electron": "pnpm build:main && pnpm build:preload",
+    "build": "pnpm build:renderer && pnpm build:electron && electron-builder --dir",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx"
   },
@@ -28,11 +30,13 @@
     "vite": "^6.3.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.4",
     "@types/react": "^19.1.5",
     "@types/react-dom": "^19.1.5",
     "cross-env": "^10.1.0",
     "electron": "^36.3.1",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^4.2.4"
   },
   "build": {
     "appId": "dev.laryn.desktop",

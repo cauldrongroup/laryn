@@ -4,6 +4,7 @@
   "account_id": "6d6529fc50727497faffecc2e510e191",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-24",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
   },
@@ -11,11 +12,34 @@
     "binding": "AI",
     "remote": true
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "laryn",
+      "database_id": "acbb72bb-3ecb-4f9a-b542-2a233bf8ea4d"
+    }
+  ],
   "vars": {
-    "AI_GATEWAY_TRANSCRIPTION_MODEL": "@cf/deepgram/nova-3",
-    "AI_GATEWAY_CLEANUP_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
-    "AI_GATEWAY_CLEANUP_FALLBACK_MODEL": "@cf/ibm-granite/granite-4.0-h-micro",
-    "AI_GATEWAY_CLEANUP_PREMIUM_MODEL": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    "CLEANUP_TIER": "standard"
+    "BETTER_AUTH_URL": "https://laryn-transcribe.mineperial.workers.dev",
+    "POLAR_SERVER": "production",
+    "PUBLIC_APP_URL": "https://laryn-transcribe.mineperial.workers.dev",
+    "POLAR_PRO_PRODUCT_ID": "3d8f3e31-841c-41a2-92b3-bcfeaebeeba4",
+    "POLAR_USAGE_EVENT_NAME": "laryn-usage",
+    "POLAR_USAGE_METER_ID": "435e7d54-2c7c-4dd8-88c5-850d13ccf486",
+    "LARYN_INCLUDED_CREDIT_UNITS": "3000000",
+    "LARYN_POLAR_UNIT_MICRO_USD": "1",
+    "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE": "510",
+    "AI_GATEWAY_ID": "default",
+    "TRANSCRIPTION_PROVIDER": "groq",
+    "TRANSCRIPTION_LANGUAGE": "en",
+    "TRANSCRIPTION_HINTS": "Laryn, Cloudflare, Workers AI, AI Gateway, Groq, Whisper, Electron, TypeScript, JavaScript, Node, pnpm, PowerShell, GitHub, API, JSON, URL, Windows, Ctrl, Win, hotkey",
+    "AI_GATEWAY_TRANSCRIPTION_MODEL": "@cf/openai/whisper-large-v3-turbo",
+    "GROQ_TRANSCRIPTION_MODEL": "whisper-large-v3-turbo",
+    "AI_GATEWAY_CLEANUP_MODEL": "@cf/meta/llama-3.2-3b-instruct",
+    "AI_GATEWAY_CLEANUP_CHEAP_MODEL": "@cf/meta/llama-3.2-1b-instruct",
+    "AI_GATEWAY_CLEANUP_FALLBACK_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
+    "AI_GATEWAY_CLEANUP_PREMIUM_MODEL": "@cf/meta/llama-3.1-8b-instruct-fast",
+    "CLEANUP_TIMEOUT_MS": "3500",
+    "CLEANUP_TIER": "off"
   }
 }

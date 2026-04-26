@@ -1,4 +1,65 @@
-export type CleanupTier = "cheap" | "standard" | "premium";
+export type CleanupTier = "off" | "cheap" | "standard" | "premium";
+
+export type AccountBillingStatus = {
+  proActive: boolean;
+  subscriptionStatus: "active" | "trialing" | "past_due" | "canceled" | "revoked" | "inactive" | "unknown";
+  currentPeriodEnd?: string;
+  polarCustomerId?: string;
+  usageCredits?: {
+    includedUnits: number;
+    includedCents: number;
+    consumedUnits?: number;
+    creditedUnits?: number;
+    balanceUnits?: number;
+    consumedCents?: number;
+    remainingCents?: number;
+    overageCents?: number;
+  };
+};
+
+export type DesktopDevice = {
+  id: string;
+  deviceName: string;
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+};
+
+export type AccountProfile = {
+  id: string;
+  name: string;
+  email: string;
+  image?: string | null;
+};
+
+export type AccountStatus = {
+  authenticated: boolean;
+  user?: AccountProfile;
+  billing?: AccountBillingStatus;
+  devices?: DesktopDevice[];
+  usage?: {
+    transcriptionCount: number;
+    audioDurationMs: number;
+  };
+};
+
+export type DeviceStartResponse = {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+};
+
+export type DeviceTokenResponse =
+  | {
+      status: "pending";
+    }
+  | {
+      status: "approved";
+      token: string;
+      account: AccountProfile;
+      billing: AccountBillingStatus;
+    };
 
 export type TranscriptionRequestMeta = {
   mimeType: string;
@@ -18,11 +79,38 @@ export type TranscriptionResponse = {
   fallbackUsed?: boolean;
   wordCount: number;
   durationMs: number;
-  transcriptionModel: "@cf/deepgram/nova-3";
+  transcriptionProvider?: string;
+  transcriptionModel: string;
   cleanupModel?: string;
+  usageEventId?: string;
+  accountId?: string;
+  deviceId?: string;
 };
 
 export type TranscriptionError = {
   error: string;
   detail?: string;
+};
+
+export type SubscriptionRequiredError = TranscriptionError & {
+  error: "Subscription required";
+  billing: AccountBillingStatus;
+};
+
+export type HistoryEntry = {
+  id: string;
+  createdAt: string;
+  text: string;
+  rawText?: string;
+  cleanedText?: string;
+  pastedVariant: "cleaned" | "raw";
+  cleanupApplied: boolean;
+  cleanupTier: CleanupTier;
+  cleanupModel?: string;
+  cleanupWarning?: string;
+  fallbackUsed?: boolean;
+  wordCount: number;
+  durationMs: number;
+  transcriptionModel?: string;
+  transcriptionProvider?: string;
 };

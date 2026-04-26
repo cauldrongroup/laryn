@@ -1,26 +1,79 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CleanupTier, TranscriptionResponse } from "@laryn/shared";
+import type { CleanupTier, HistoryEntry, TranscriptionResponse } from "@laryn/shared";
 
 contextBridge.exposeInMainWorld("laryn", {
   ready: () => ipcRenderer.invoke("renderer:ready"),
+  setHotkey: (hotkey: string) => ipcRenderer.invoke("settings:set-hotkey", hotkey),
   checkWorker: () => ipcRenderer.invoke("worker:check"),
-  recordingStarted: () => ipcRenderer.send("recording:started"),
+  startDeviceLogin: () => ipcRenderer.invoke("auth:start-device-login"),
+  pollDeviceLogin: (deviceCode: string, deviceName?: string) => ipcRenderer.invoke("auth:poll-device-login", deviceCode, deviceName),
+  logout: () => ipcRenderer.invoke("auth:logout"),
+  getAccountStatus: () => ipcRenderer.invoke("auth:get-account-status"),
+  openAccount: () => ipcRenderer.invoke("auth:open-account"),
+  minimizeWindow: () => ipcRenderer.send("window:minimize"),
+  closeWindow: () => ipcRenderer.send("window:close"),
+  recordingStarted: (metadata?: RecordingMetadata) => ipcRenderer.send("recording:started", metadata),
   recordingStopped: () => ipcRenderer.send("recording:stopped"),
+  recordingCancelled: (message: string) => ipcRenderer.send("recording:cancelled", message),
+  recordingFailed: (message: string) => ipcRenderer.send("recording:failed", message),
   transcribeAudio: (audio: ArrayBuffer, mimeType: string, durationMs: number, cleanupTier: CleanupTier) =>
     ipcRenderer.invoke("transcription:submit", audio, mimeType, durationMs, cleanupTier),
+  listHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:list"),
+  deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:delete", id),
+  clearHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:clear"),
+  copyToClipboard: (text: string) => ipcRenderer.send("history:copy", text),
   onStartRecording: (callback: () => void) => {
-    ipcRenderer.on("recording:start", callback);
+    const listener = () => callback();
+    ipcRenderer.on("recording:start", listener);
+    return () => ipcRenderer.removeListener("recording:start", listener);
   },
   onStopRecording: (callback: () => void) => {
-    ipcRenderer.on("recording:stop", callback);
+    const listener = () => callback();
+    ipcRenderer.on("recording:stop", listener);
+    return () => ipcRenderer.removeListener("recording:stop", listener);
   },
   onStatus: (callback: (status: DesktopStatus) => void) => {
-    ipcRenderer.on("desktop:status", (_event, status: DesktopStatus) => callback(status));
+    const listener = (_event: Electron.IpcRendererEvent, status: DesktopStatus) => callback(status);
+    ipcRenderer.on("desktop:status", listener);
+    return () => ipcRenderer.removeListener("desktop:status", listener);
+  },
+  onHistoryChanged: (callback: (history: HistoryEntry[]) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, history: HistoryEntry[]) => callback(history);
+    ipcRenderer.on("desktop:history-changed", listener);
+    return () => ipcRenderer.removeListener("desktop:history-changed", listener);
   }
 });
 
 export type DesktopStatus = {
-  authStatus: "ok" | "missing-token" | "unauthorized" | "unknown";
+  authStatus: "ok" | "signed-out" | "pending" | "subscription-required" | "unauthorized" | "unknown";
+  account?: {
+    id: string;
+    name: string;
+    email: string;
+    image?: string | null;
+  } | null;
+  billing?: {
+    proActive: boolean;
+    subscriptionStatus: string;
+    currentPeriodEnd?: string;
+    polarCustomerId?: string;
+    usageCredits?: {
+      includedUnits: number;
+      includedCents: number;
+      consumedUnits?: number;
+      creditedUnits?: number;
+      balanceUnits?: number;
+      consumedCents?: number;
+      remainingCents?: number;
+      overageCents?: number;
+    };
+  } | null;
+  deviceLogin?: {
+    deviceCode: string;
+    userCode: string;
+    verificationUri: string;
+    expiresAt: string;
+  };
   hotkey: string;
   hotkeyStatus: {
     activeHotkey: string;
@@ -34,4 +87,10 @@ export type DesktopStatus = {
   lastTranscript?: TranscriptionResponse;
   workerStatus: "online" | "offline" | "unauthorized" | "unknown";
   workerUrl: string;
+};
+
+export type RecordingMetadata = {
+  deviceId?: string;
+  deviceLabel?: string;
+  trackLabel?: string;
 };

@@ -1,0 +1,10 @@
+ALTER TABLE usage_events ADD COLUMN billable_units INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN transcription_cost_micro_usd INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN cleanup_cost_micro_usd INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE usage_events ADD COLUMN cleanup_input_tokens INTEGER;
+ALTER TABLE usage_events ADD COLUMN cleanup_output_tokens INTEGER;
+ALTER TABLE usage_events ADD COLUMN cleanup_tokens_estimated INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE usage_events ADD COLUMN polar_event_name TEXT;
+ALTER TABLE usage_events ADD COLUMN polar_external_id TEXT;
+ALTER TABLE usage_events ADD COLUMN polar_ingested_at TEXT;
+ALTER TABLE usage_events ADD COLUMN polar_ingestion_error TEXT;

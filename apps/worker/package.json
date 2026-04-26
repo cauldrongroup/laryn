@@ -8,13 +8,21 @@
     "deploy": "wrangler deploy",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@laryn/shared": "workspace:*"
+    "@laryn/shared": "workspace:*",
+    "@polar-sh/better-auth": "^1.8.3",
+    "@polar-sh/sdk": "^0.46.4",
+    "better-auth": "^1.6.9",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.15"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260425.1",
+    "drizzle-kit": "^0.31.10",
+    "vitest": "^4.1.5",
     "wrangler": "^4.16.1"
   }
 }
