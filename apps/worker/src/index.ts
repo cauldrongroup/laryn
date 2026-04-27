@@ -1508,10 +1508,10 @@ function renderMarketingPage(env: Env, page: "home" | "pricing" | "download"): s
         : "Laryn — press, speak, pasted.";
   const description =
     page === "pricing"
-      ? "Laryn Pro is $5/month with $3 of monthly transcription credit included. No seats, no markup — just metered model cost beyond the credit."
+      ? "Laryn Pro is $5 a month with $3 of dictation included. No seats, no markup, no surprise charges."
       : page === "download"
-        ? "Install Laryn for Windows in under a minute. Pair your account with a short code, then dictate into any focused application."
-        : "Hold a hotkey, talk normally, and Laryn pastes clean punctuated text into whatever app is focused. Notes, replies, code comments, drafts — faster than typing.";
+        ? "Install Laryn for Windows in under a minute. Sign in with Google, then dictate into any app you have open."
+        : "Hold a hotkey, talk normally, and Laryn pastes clean punctuated text into whatever app is focused. Notes, replies, drafts — faster than typing.";
   const body =
     page === "pricing"
       ? pricingBody(appUrl)
@@ -1542,10 +1542,15 @@ function renderMarketingPage(env: Env, page: "home" | "pricing" | "download"): s
 </html>`);
 }
 
+function brandLink(size: "sm" | "md" = "md"): string {
+  const px = size === "sm" ? 26 : 30;
+  return `<a class="brand" href="/" aria-label="Homepage"><img class="brand-logo" src="${logoFaviconDataUrl()}" alt="" width="${px}" height="${px}" /><span class="brand-name">Laryn</span></a>`;
+}
+
 function marketingHeader(currentPage: "home" | "pricing" | "download", appUrl: string): string {
   return `<header class="site-header">
     <div class="site-header-inner">
-      <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
+      ${brandLink("md")}
       <nav class="site-nav" aria-label="Primary">
         <a href="/" data-active="${currentPage === "home"}">Product</a>
         <a href="/pricing" data-active="${currentPage === "pricing"}">Pricing</a>
@@ -1563,8 +1568,8 @@ function marketingFooter(): string {
   return `<footer class="site-footer">
     <div class="site-footer-inner">
       <div class="footer-brand">
-        <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
-        <p>Press, speak, pasted. Windows-first dictation for writers, devs, and support teams.</p>
+        ${brandLink("md")}
+        <p>Talk into anything on Windows. Laryn turns speech into clean, ready-to-send text — wherever your cursor is.</p>
       </div>
       <div class="footer-cols">
         <div>
@@ -1583,18 +1588,18 @@ function marketingFooter(): string {
           </ul>
         </div>
         <div>
-          <h3>Built on</h3>
+          <h3>Help</h3>
           <ul role="list">
-            <li>Cloudflare Workers AI</li>
-            <li>Whisper large-v3-turbo</li>
-            <li>Polar billing</li>
+            <li><a href="/download">Setup guide</a></li>
+            <li><a href="/pricing#faq">FAQ</a></li>
+            <li><a href="mailto:hello@laryn.app">Contact</a></li>
           </ul>
         </div>
       </div>
     </div>
     <div class="site-footer-bottom">
-      <small>© ${new Date().getFullYear()} Laryn. Windows dictation, cleanly pasted.</small>
-      <small>v0.1 · Built for Windows 10 + 11</small>
+      <small>© ${new Date().getFullYear()} Laryn. Made for Windows.</small>
+      <small>Windows 10 + 11 · 64-bit</small>
     </div>
   </footer>`;
 }
@@ -1613,9 +1618,9 @@ function homeBody(appUrl: string): string {
             <a class="link-action" href="/download"><span>Download for Windows</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
           </div>
           <ul class="hero-meta" role="list">
-            <li><span class="hero-meta-dot dot-good"></span>$3 of usage credit / month</li>
-            <li><span class="hero-meta-dot dot-good"></span>Whisper large-v3-turbo</li>
-            <li><span class="hero-meta-dot dot-good"></span>Pastes into any focused app</li>
+            <li><span class="hero-meta-dot dot-good"></span>$3 of dictation included every month</li>
+            <li><span class="hero-meta-dot dot-good"></span>Studio-quality accuracy</li>
+            <li><span class="hero-meta-dot dot-good"></span>Pastes into any app you have open</li>
           </ul>
         </div>
         <aside class="hero-mock" aria-hidden="true">
@@ -1674,7 +1679,7 @@ function homeBody(appUrl: string): string {
         <li class="flow-step">
           <div class="flow-step-num">03</div>
           <h3>Release. It's pasted.</h3>
-          <p>Whisper transcribes, Laryn cleans punctuation if you want it, then pastes into whatever window had focus.</p>
+          <p>Laryn turns your speech into clean, punctuated text and drops it straight into the window you were just typing in.</p>
         </li>
       </ol>
     </section>
@@ -1694,42 +1699,42 @@ function homeBody(appUrl: string): string {
               <span class="case-tag">Slack reply</span>
               <span class="case-time">0.6s</span>
             </header>
-            <p>"Following up — the deploy looks good. Let's ship after standup, then I'll write up the migration notes."</p>
+            <p>"Sounds good to me — let's lock in Tuesday at 10. I'll send a calendar invite once Maya confirms."</p>
           </article>
           <article class="case-card">
             <header class="case-card-head">
-              <span class="case-tag">Code comment</span>
-              <span class="case-time">0.5s</span>
-            </header>
-            <p class="mono">// Round-trip the timestamp before persisting; the API returns UTC and the UI assumes local.</p>
-          </article>
-          <article class="case-card">
-            <header class="case-card-head">
-              <span class="case-tag">Email draft</span>
+              <span class="case-tag">Email reply</span>
               <span class="case-time">1.1s</span>
             </header>
-            <p>"Hey Maya — thanks for the prompt feedback. I'll wire up the import flow this afternoon and send a Loom once it's working end-to-end."</p>
+            <p>"Hey Sam — thanks for the quick turnaround. I'll review the proposal tonight and get you notes before our call tomorrow."</p>
           </article>
           <article class="case-card">
             <header class="case-card-head">
-              <span class="case-tag">Notes</span>
+              <span class="case-tag">Doc draft</span>
+              <span class="case-time">0.9s</span>
+            </header>
+            <p>The new onboarding flow needs to feel like five minutes, not fifty. Cut anything that doesn't earn its place on the first screen.</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Quick note</span>
               <span class="case-time">0.4s</span>
             </header>
-            <p>Standup notes: shipped the cleanup tier toggle, regression on the overlay z-index, sketching device-pairing UX for next week.</p>
+            <p>Pick up oat milk, drop the dry cleaning, swing by the post office before five. Move dinner with Alex to Thursday.</p>
           </article>
           <article class="case-card">
             <header class="case-card-head">
-              <span class="case-tag">Support reply</span>
+              <span class="case-tag">Customer reply</span>
               <span class="case-time">0.8s</span>
             </header>
-            <p>"Got it — the issue is the device token expired after the migration. I've reissued it; pair from Settings and the queue should resume."</p>
+            <p>"Got it — thanks for letting us know. I've refunded the order and shipped a replacement; you'll see tracking in your inbox shortly."</p>
           </article>
           <article class="case-card">
             <header class="case-card-head">
-              <span class="case-tag">Search bar</span>
+              <span class="case-tag">Search</span>
               <span class="case-time">0.3s</span>
             </header>
-            <p class="mono">react query optimistic update typescript</p>
+            <p class="mono">best espresso machine under 800 dollars 2026</p>
           </article>
         </div>
       </div>
@@ -1738,7 +1743,7 @@ function homeBody(appUrl: string): string {
     <section class="section section-why">
       <div class="page-shell section-head">
         <p class="eyebrow"><span class="eyebrow-dot"></span>Why Laryn</p>
-        <h2>Built like a power-user tool, priced like a coffee.</h2>
+        <h2>Feels like a power tool. Costs less than a coffee.</h2>
       </div>
       <div class="page-shell">
         <dl class="why-grid">
@@ -1752,16 +1757,16 @@ function homeBody(appUrl: string): string {
           <div class="why-item">
             <dt>
               <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M2.5 3.75A2.25 2.25 0 0 1 4.75 1.5h6.5a2.25 2.25 0 0 1 2.25 2.25v8.5a2.25 2.25 0 0 1-2.25 2.25h-6.5A2.25 2.25 0 0 1 2.5 12.25v-8.5Zm2.5-.75a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h6.5a.75.75 0 0 0 .75-.75v-8.5a.75.75 0 0 0-.75-.75H5Zm1 2.5a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 5.5Zm0 3a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 8.5Z"/></svg>
-              Cloudflare-backed accuracy
+              Studio-quality accuracy
             </dt>
-            <dd>Whisper large-v3-turbo via Workers AI Gateway, with a tunable cleanup pass that fixes punctuation without rewriting your voice.</dd>
+            <dd>Best-in-class speech recognition with optional cleanup that fixes punctuation and dropped words — without rewriting your voice.</dd>
           </div>
           <div class="why-item">
             <dt>
               <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M8 1.5c.41 0 .75.34.75.75v.79a5.5 5.5 0 1 1-1.5 0v-.79c0-.41.34-.75.75-.75ZM4 8a4 4 0 1 0 8 0 4 4 0 0 0-8 0Zm4-2.25a.75.75 0 0 1 .75.75v1.5h1a.75.75 0 0 1 0 1.5h-1.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>
-              Honest, metered pricing
+              Honest, simple pricing
             </dt>
-            <dd>$5/month and $3 of usage credit. Anything over the credit is metered at model cost via Polar — no markup, no per-seat math.</dd>
+            <dd>$5 a month with $3 of dictation included. If you go over, you only pay our cost — no markup, no seat counts, no surprise bills.</dd>
           </div>
           <div class="why-item">
             <dt>
@@ -1773,16 +1778,16 @@ function homeBody(appUrl: string): string {
           <div class="why-item">
             <dt>
               <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M8 1.5a.75.75 0 0 1 .75.75v3.5h3.5a.75.75 0 0 1 0 1.5h-3.5v3.5a.75.75 0 0 1-1.5 0V7.25h-3.5a.75.75 0 0 1 0-1.5h3.5v-3.5A.75.75 0 0 1 8 1.5Z"/></svg>
-              Cleanup, your choice
+              Cleanup, your call
             </dt>
-            <dd>Pick off, cheap, standard, or premium per request. Off pastes the raw Whisper output; the others lightly fix dictation artifacts.</dd>
+            <dd>Choose how polished the output should be — from raw transcript to lightly fixed to fully tidied. Switch any time.</dd>
           </div>
           <div class="why-item">
             <dt>
               <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M2.75 3a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h10.5a.75.75 0 0 0 .75-.75V5.5h-4.25A1.75 1.75 0 0 1 8 3.75V3H2.75ZM9.5 3v.75c0 .14.11.25.25.25h4l-4.25-1Z"/></svg>
-              Per-device pairing
+              One sign-in, every device
             </dt>
-            <dd>Approve each desktop with a short code. Revoke from the dashboard any time — no password to rotate, no token to copy.</dd>
+            <dd>Sign in with Google on as many computers as you like. Sign any of them out from the dashboard with one click.</dd>
           </div>
         </dl>
       </div>
@@ -1792,12 +1797,12 @@ function homeBody(appUrl: string): string {
       <div class="page-shell pricing-teaser">
         <div class="pricing-teaser-copy">
           <p class="eyebrow"><span class="eyebrow-dot"></span>One plan</p>
-          <h2>$5/month, $3 in usage credit.</h2>
-          <p class="section-lede">Most people stay inside the included credit. If a heavy day pushes you over, the overage is metered through Polar at the model's actual cost.</p>
+          <h2>$5 a month. $3 of dictation on us.</h2>
+          <p class="section-lede">Most people never touch the included amount. If a heavy day takes you past it, anything extra is billed at exactly our cost — never marked up.</p>
           <ul class="hero-meta" role="list">
             <li><span class="hero-meta-dot dot-good"></span>Cancel from the dashboard, any time</li>
-            <li><span class="hero-meta-dot dot-good"></span>No per-seat pricing — pair as many devices as you want</li>
-            <li><span class="hero-meta-dot dot-good"></span>Whisper transcription billed at model cost beyond credit</li>
+            <li><span class="hero-meta-dot dot-good"></span>Use it on as many computers as you like</li>
+            <li><span class="hero-meta-dot dot-good"></span>No surprise charges — you only pay for what you use</li>
           </ul>
           <div class="hero-actions">
             <a class="btn btn-primary" href="${appUrl}/app">Start Pro</a>
@@ -1812,11 +1817,11 @@ function homeBody(appUrl: string): string {
             </div>
             <p class="pricing-card-desc">Pro dictation everywhere on Windows.</p>
             <ul class="pricing-features" role="list">
-              <li>$3 of monthly transcription credit</li>
-              <li>Whisper large-v3-turbo + cleanup tiers</li>
-              <li>Unlimited paired desktops</li>
-              <li>Local-only transcript history</li>
-              <li>Custom hotkeys + cleanup quality</li>
+              <li>$3 of dictation included every month</li>
+              <li>Studio-quality accuracy + smart cleanup</li>
+              <li>Use on as many computers as you like</li>
+              <li>Last 500 transcripts kept on your PC</li>
+              <li>Custom hotkeys, your way</li>
             </ul>
             <a class="btn btn-primary btn-block" href="${appUrl}/app">Get Pro</a>
           </div>
@@ -1849,7 +1854,7 @@ function pricingBody(appUrl: string): string {
       <div class="page-shell hero-shell-centered">
         <p class="eyebrow"><span class="eyebrow-dot"></span>Pricing</p>
         <h1>One plan. No surprises.</h1>
-        <p class="lede">Laryn Pro is $5 a month. The first $3 of transcription each month is on us. Beyond that you pay model cost — no markup, no minimums.</p>
+        <p class="lede">Laryn Pro is $5 a month, with the first $3 of dictation included every month. Go past it and you only pay our cost — no markup, no minimums.</p>
       </div>
     </section>
 
@@ -1860,25 +1865,25 @@ function pricingBody(appUrl: string): string {
             <span class="badge badge-brand">Pro</span>
             <span class="pricing-price"><span class="pricing-price-num">$5</span><span class="pricing-price-suffix">/month</span></span>
           </div>
-          <p class="pricing-card-desc">For everyone using Laryn day to day.</p>
+          <p class="pricing-card-desc">Everything you need to talk into anything.</p>
           <ul class="pricing-features" role="list">
-            <li>$3 of transcription credit, every month</li>
-            <li>Whisper large-v3-turbo speech-to-text</li>
-            <li>Cleanup tiers: off, cheap, standard, premium</li>
-            <li>Unlimited paired desktops on one account</li>
-            <li>Local transcript history (last 500 entries)</li>
-            <li>Custom hotkey, microphone, and cleanup model</li>
+            <li>$3 of dictation included every month</li>
+            <li>Studio-quality speech recognition</li>
+            <li>Choose how polished you want the output</li>
+            <li>Use it on as many computers as you like</li>
+            <li>Last 500 transcripts kept on your PC</li>
+            <li>Pick your own hotkey and microphone</li>
             <li>Cancel any time from the dashboard</li>
           </ul>
           <a class="btn btn-primary btn-block" href="${appUrl}/app">Start Pro</a>
         </article>
         <article class="pricing-card pricing-card-meta">
-          <h3>What's a usage credit?</h3>
-          <p>Every transcription has a real model cost — usually a fraction of a cent. Laryn records that cost against your monthly $3 credit so you can see exactly where your spend goes.</p>
+          <h3>How the included $3 works</h3>
+          <p>Every dictation has a tiny cost — usually a fraction of a cent. Laryn keeps a running tally so you can see exactly how much of your $3 you've used.</p>
           <ul class="pricing-bullets" role="list">
-            <li><strong>Inside credit.</strong> Nothing extra to pay. The credit resets every billing cycle.</li>
-            <li><strong>Beyond credit.</strong> Overage is metered through Polar at the model's actual price.</li>
-            <li><strong>Zero usage.</strong> Quiet month? You still get the full $3 of credit on the next cycle.</li>
+            <li><strong>Inside the $3.</strong> Nothing extra to pay. It resets each month.</li>
+            <li><strong>Past the $3.</strong> Anything extra is billed at our actual cost — no markup.</li>
+            <li><strong>Quiet month?</strong> No problem. You still get a fresh $3 next cycle.</li>
           </ul>
           <a class="link-action" href="${appUrl}/app"><span>See your live usage</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
         </article>
@@ -1886,58 +1891,58 @@ function pricingBody(appUrl: string): string {
 
       <div class="page-shell">
         <div class="pricing-compare">
-          <h3>What $3 of credit looks like</h3>
+          <h3>What $3 a month looks like</h3>
           <div class="compare-rows">
             <div class="compare-row">
               <strong>~600 minutes</strong>
-              <span>of dictated audio with cleanup off — the cheapest option.</span>
+              <span>of dictation if you keep cleanup off — the lightest option.</span>
             </div>
             <div class="compare-row">
               <strong>~120 minutes</strong>
-              <span>with the standard cleanup tier on every transcript.</span>
+              <span>with standard cleanup tidying up every transcript.</span>
             </div>
             <div class="compare-row">
               <strong>~60 minutes</strong>
-              <span>with premium cleanup on long-form dictation.</span>
+              <span>with premium cleanup on long-form, polished writing.</span>
             </div>
           </div>
-          <p class="compare-note">Estimates assume Whisper large-v3-turbo on Cloudflare AI Gateway and the listed cleanup tier. Real cost varies with audio length and cleanup model.</p>
+          <p class="compare-note">These are rough estimates — your actual usage will depend on how much you talk and how polished you want the output.</p>
         </div>
       </div>
     </section>
 
     <section class="section section-faq">
-      <div class="page-shell section-head section-head-row">
+      <div class="page-shell section-head section-head-row" id="faq">
         <div>
-          <p class="eyebrow"><span class="eyebrow-dot"></span>Billing FAQ</p>
+          <p class="eyebrow"><span class="eyebrow-dot"></span>FAQ</p>
           <h2>The small print, in plain English.</h2>
         </div>
       </div>
       <div class="page-shell">
         <div class="faq-grid">
           <details class="faq-item">
-            <summary>How does usage billing actually work?</summary>
-            <p>Each transcription records its model cost in micro-dollars. We sum that against your $3 monthly credit. If you go over, Polar bills the overage at the same model cost — no extra margin from us.</p>
+            <summary>How does the $3 of included dictation work?</summary>
+            <p>Each time you dictate, Laryn tracks the small cost and counts it against your $3 monthly amount. If you go past the $3, anything extra is billed at exactly our cost — nothing more.</p>
           </details>
           <details class="faq-item">
-            <summary>Can I see what I've spent?</summary>
-            <p>Yes. Open the dashboard at any time to see how much credit is consumed, how much remains, and any overage Polar has reported.</p>
+            <summary>Can I see what I've used?</summary>
+            <p>Yes. Open the dashboard any time to see how much you've used, how much is left, and anything billed past the included amount.</p>
           </details>
           <details class="faq-item">
             <summary>What happens if I cancel?</summary>
-            <p>You keep Pro until the end of the current billing cycle, then the desktop app falls back to the unauthenticated state. No data is deleted; pair again any time.</p>
+            <p>You keep Pro until the end of the month you've paid for, then Laryn quietly turns off the dictation features. None of your saved transcripts are deleted — sign back in any time.</p>
           </details>
           <details class="faq-item">
-            <summary>Is my audio stored anywhere?</summary>
-            <p>Audio is sent to the Worker, transcribed, and immediately discarded. Transcripts are saved locally on your desktop in the history panel — they never sync to our servers.</p>
+            <summary>Is my audio saved anywhere?</summary>
+            <p>No. Your voice is transcribed and then immediately thrown away. Only the text transcripts are saved — and only on your own computer, in the history panel.</p>
           </details>
           <details class="faq-item">
-            <summary>How many devices can I pair?</summary>
-            <p>As many as you want, on the same account. Pair each one with a short device code from the desktop's Settings drawer; revoke from the dashboard.</p>
+            <summary>How many computers can I use Laryn on?</summary>
+            <p>As many as you like, on one account. Sign in with Google on each one and you're set. Sign any of them out from the dashboard with one click.</p>
           </details>
           <details class="faq-item">
-            <summary>Do you offer team or enterprise plans?</summary>
-            <p>Not yet. Right now Laryn is one plan, one price, no seats. If you're interested in something larger, get in touch.</p>
+            <summary>Do you offer team or business plans?</summary>
+            <p>Not yet. Right now Laryn is one plan, one price, with no seat counts. If you want something larger, just get in touch.</p>
           </details>
         </div>
       </div>
@@ -1991,7 +1996,7 @@ function downloadBody(appUrl: string): string {
         <li class="flow-step">
           <div class="flow-step-num">02</div>
           <h3>Sign in &amp; pair</h3>
-          <p>Open Settings → Account → Sign in with Google. The desktop shows a short device code; approve it in the browser.</p>
+          <p>Open Settings → Account → Sign in with Google. Approve the short code in your browser and you're paired.</p>
         </li>
         <li class="flow-step">
           <div class="flow-step-num">03</div>
@@ -2023,8 +2028,8 @@ function downloadBody(appUrl: string): string {
             <span class="hotkey-plus">+</span>
             <kbd class="kbd-lg">Win</kbd>
           </div>
-          <p>Default binding. Modifier-only shortcuts can be flaky on Windows, so Laryn falls back to <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Space</kbd> automatically when needed.</p>
-          <p class="muted">Change it any time from Settings → Hotkey. Any modifier combo is supported.</p>
+          <p>The default shortcut. If your keyboard layout doesn't play nicely with two-key holds, Laryn quietly switches to <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Space</kbd>.</p>
+          <p class="muted">Pick any combination you like — change it any time from Settings → Hotkey.</p>
         </article>
       </div>
     </section>
@@ -2063,7 +2068,7 @@ function renderDashboardPage(): string {
 <body class="dashboard">
   <header class="dash-topbar">
     <div class="dash-topbar-inner">
-      <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
+      ${brandLink("sm")}
       <nav class="dash-topnav" aria-label="Primary">
         <a href="/app" data-active="true">Account</a>
         <a href="/pricing">Pricing</a>
@@ -2081,7 +2086,7 @@ function renderDashboardPage(): string {
         <div>
           <p class="eyebrow"><span class="eyebrow-dot"></span>Account</p>
           <h1>Dashboard</h1>
-          <p id="dash-subtitle" class="dash-subtitle">Manage your Laryn Pro plan, paired devices, and usage.</p>
+          <p id="dash-subtitle" class="dash-subtitle">Your plan, your computers, and how much you've used this month.</p>
         </div>
       </header>
 
@@ -2166,7 +2171,7 @@ function renderDashboardPage(): string {
       }
       currentAccount = null;
       setSignedOutTopbar();
-      subtitle.textContent = "Manage your Laryn Pro plan, paired devices, and usage.";
+      subtitle.textContent = "Your plan, your computers, and how much you've used this month.";
       content.innerHTML = signedOutHero();
       const button = content.querySelector("#hero-sign-in");
       if (button) button.addEventListener("click", handleSignIn);
@@ -2183,7 +2188,7 @@ function renderDashboardPage(): string {
         setSignedInTopbar(account);
         if (pendingCode) {
           approval.innerHTML =
-            '<div class="approval-card"><div class="approval-text"><strong>Pair desktop device</strong><p>Approve code <code>' + escapeHtml(pendingCode) + '</code> for this account.</p></div><button id="approve-device" class="btn btn-primary btn-sm">Approve device</button></div>';
+            '<div class="approval-card"><div class="approval-text"><strong>Add a new computer</strong><p>Approve code <code>' + escapeHtml(pendingCode) + '</code> to link this computer to your account.</p></div><button id="approve-device" class="btn btn-primary btn-sm">Approve</button></div>';
           document.querySelector("#approve-device").addEventListener("click", approveDevice);
         }
         subtitle.textContent = "Welcome back" + (account.user && account.user.name ? ", " + account.user.name.split(" ")[0] : "") + ".";
@@ -2192,9 +2197,9 @@ function renderDashboardPage(): string {
         currentAccount = null;
         setSignedOutTopbar();
         approval.innerHTML = pendingCode
-          ? '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in to pair this device</strong><p>After signing in, approve code <code>' + escapeHtml(pendingCode) + '</code>.</p></div></div>'
+          ? '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in to add this computer</strong><p>Once you\\'re signed in, approve code <code>' + escapeHtml(pendingCode) + '</code> to link it.</p></div></div>'
           : "";
-        subtitle.textContent = "Sign in to manage your plan, devices, and usage.";
+        subtitle.textContent = "Sign in to manage your plan, computers, and usage.";
         content.innerHTML = signedOutHero();
         const button = content.querySelector("#hero-sign-in");
         if (button) button.addEventListener("click", handleSignIn);
@@ -2207,9 +2212,9 @@ function renderDashboardPage(): string {
       return '<section class="dash-hero dash-hero-empty">'
         + '<div class="dash-hero-glyph" aria-hidden="true"><span class="dash-hero-mic"></span></div>'
         + '<div class="dash-hero-copy">'
-          + '<p class="eyebrow"><span class="eyebrow-dot"></span>Sign in required</p>'
-          + '<h2>Connect your Google account.</h2>'
-          + '<p>Sign in to start your Pro subscription, approve desktops, and watch your monthly usage.</p>'
+          + '<p class="eyebrow"><span class="eyebrow-dot"></span>Sign in</p>'
+          + '<h2>Sign in to your Laryn account.</h2>'
+          + '<p>Use your Google account to start Pro, add computers, and check your monthly usage.</p>'
         + '</div>'
         + '<div class="dash-hero-actions">'
           + '<button id="hero-sign-in" class="btn btn-primary btn-lg">Sign in with Google</button>'
@@ -2236,7 +2241,7 @@ function renderDashboardPage(): string {
       await json("/api/device/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userCode: code }) });
       pendingCode = "";
       sessionStorage.removeItem("laryn.pendingDeviceCode");
-      approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Device approved</strong><p>Return to the desktop app. It will finish pairing in a few seconds.</p></div></div>';
+      approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Computer added</strong><p>You can head back to the Laryn app — it will finish setup in a few seconds.</p></div></div>';
       await load();
       } catch (error) {
         approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Approval failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
@@ -2271,10 +2276,10 @@ function renderDashboardPage(): string {
       try {
         const data = await json("/api/account/reconcile/polar", { method: "POST" });
         const billing = data.billing || {};
-        approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Billing reconciled</strong><p>Polar reports ' + (billing.proActive ? "an active Pro subscription." : "no active Pro subscription.") + '</p></div></div>';
+        approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Billing refreshed</strong><p>' + (billing.proActive ? "Your Pro plan is active." : "No active Pro plan found.") + '</p></div></div>';
         await load();
       } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Reconcile failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
+        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Refresh failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
       }
     }
 
@@ -2315,22 +2320,22 @@ function renderDashboardPage(): string {
       const usedPct = Math.min(100, Math.max(0, creditPercent));
       const minutes = Math.round((usage.audioDurationMs || 0) / 60000);
       const transcriptions = usage.transcriptionCount || 0;
-      const planLabel = proActive ? "Laryn Pro" : "No active plan";
+      const planLabel = proActive ? "Laryn Pro" : "Free account";
       const planSubtitle = proActive
-        ? "$5 / month · " + escapeHtml(billing.subscriptionStatus || "active")
-        : "Start Pro to unlock dictation across your paired desktops.";
+        ? "$5 / month · " + escapeHtml(formatPlanStatus(billing.subscriptionStatus))
+        : "Start Pro to dictate into anything on your computer.";
       const heroBadge = proActive
         ? '<span class="badge badge-good"><span class="badge-dot"></span>Pro active</span>'
-        : '<span class="badge badge-warn"><span class="badge-dot"></span>Subscription required</span>';
+        : '<span class="badge badge-warn"><span class="badge-dot"></span>Pro required</span>';
       const heroPrimary = proActive
-        ? '<button id="portal" class="btn btn-primary btn-sm">Billing portal</button>'
+        ? '<button id="portal" class="btn btn-primary btn-sm">Manage billing</button>'
         : '<button id="checkout" class="btn btn-primary btn-sm">Get Pro · $5/mo</button>';
       const heroSecondary = proActive
         ? '<button id="checkout" class="btn btn-secondary btn-sm">Manage plan</button>'
-        : '<button id="portal" class="btn btn-secondary btn-sm">Billing portal</button>';
+        : '<button id="portal" class="btn btn-secondary btn-sm">Manage billing</button>';
 
       const overageNote = overage > 0
-        ? '<div class="usage-overage"><span class="badge badge-warn"><span class="badge-dot"></span>Over credit</span><strong>' + escapeHtml(dollars(overage)) + '</strong><small>billed through Polar this cycle</small></div>'
+        ? '<div class="usage-overage"><span class="badge badge-warn"><span class="badge-dot"></span>Past included</span><strong>' + escapeHtml(dollars(overage)) + '</strong><small>billed at our cost this month</small></div>'
         : '';
 
       const usageHero =
@@ -2339,26 +2344,26 @@ function renderDashboardPage(): string {
             + heroBadge
             + '<span class="dash-hero-plan">' + escapeHtml(planLabel) + '</span>'
           + '</div>'
-          + '<h2 class="dash-hero-title">' + (proActive ? "You're set. Dictate from any paired desktop." : "One step from dictating into anything.") + '</h2>'
+          + '<h2 class="dash-hero-title">' + (proActive ? "You're all set. Talk into anything." : "One step from talking into anything.") + '</h2>'
           + '<p class="dash-hero-sub">' + planSubtitle + '</p>'
           + '<div class="dash-hero-actions">'
             + heroPrimary
             + heroSecondary
-            + '<button id="reconcile-billing" class="btn btn-ghost btn-sm">Sync from Polar</button>'
+            + '<button id="reconcile-billing" class="btn btn-ghost btn-sm">Refresh billing</button>'
           + '</div>'
         + '</section>';
 
       const usageCard =
         '<article class="dash-card dash-card-usage">'
           + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Usage credit</p><h3 class="dash-card-title">This billing cycle</h3></div>'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Dictation this month</p><h3 class="dash-card-title">Included usage</h3></div>'
             + '<span class="dash-card-pill">' + escapeHtml(includedCredit) + ' included</span>'
           + '</header>'
           + '<div class="usage-meter">'
             + '<div class="usage-meter-row"><strong class="num">' + escapeHtml(usedCredit) + '</strong><span class="muted">of ' + escapeHtml(includedCredit) + '</span></div>'
             + '<div class="usage-bar"><span style="width:' + usedPct + '%" class="' + (overage > 0 ? "is-over" : "") + '"></span></div>'
             + '<div class="usage-meter-row usage-meter-row-foot">'
-              + '<small>' + escapeHtml(dollars(remaining)) + ' remaining</small>'
+              + '<small>' + escapeHtml(dollars(remaining)) + ' left</small>'
               + '<small>' + Math.round(usedPct) + '% used</small>'
             + '</div>'
           + '</div>'
@@ -2371,8 +2376,8 @@ function renderDashboardPage(): string {
             + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Activity</p><h3 class="dash-card-title">All-time totals</h3></div>'
           + '</header>'
           + '<dl class="stat-grid">'
-            + '<div class="stat-item"><dt>Transcriptions</dt><dd class="num">' + transcriptions + '</dd></div>'
-            + '<div class="stat-item"><dt>Audio minutes</dt><dd class="num">' + minutes + '</dd></div>'
+            + '<div class="stat-item"><dt>Transcripts</dt><dd class="num">' + transcriptions + '</dd></div>'
+            + '<div class="stat-item"><dt>Minutes</dt><dd class="num">' + minutes + '</dd></div>'
             + '<div class="stat-item"><dt>Devices</dt><dd class="num">' + devices.length + '</dd></div>'
           + '</dl>'
         + '</article>';
@@ -2384,21 +2389,21 @@ function renderDashboardPage(): string {
           + '</header>'
           + '<dl class="kv-list">'
             + '<div class="kv-row"><dt>Email</dt><dd class="truncate">' + escapeHtml(account.user.email || "—") + '</dd></div>'
-            + '<div class="kv-row"><dt>Plan</dt><dd>' + escapeHtml(billing.subscriptionStatus || (proActive ? "active" : "none")) + '</dd></div>'
-            + '<div class="kv-row"><dt>Credit</dt><dd>' + escapeHtml(includedCredit) + ' / month</dd></div>'
+            + '<div class="kv-row"><dt>Plan</dt><dd>' + escapeHtml(formatPlanStatus(billing.subscriptionStatus, proActive)) + '</dd></div>'
+            + '<div class="kv-row"><dt>Included</dt><dd>' + escapeHtml(includedCredit) + ' / month</dd></div>'
           + '</dl>'
         + '</article>';
 
       const devicesCard =
         '<article class="dash-card dash-card-devices">'
           + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Paired desktops</p><h3 class="dash-card-title">' + devices.length + ' active</h3></div>'
-            + '<a class="link-action" href="/download">Pair another</a>'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Your computers</p><h3 class="dash-card-title">' + devices.length + ' signed in</h3></div>'
+            + '<a class="link-action" href="/download">Add another</a>'
           + '</header>'
           + (devices.length === 0
               ? '<div class="empty-state">'
-                  + '<p>No devices paired yet.</p>'
-                  + '<p class="muted">Open the desktop app, head to Settings, and start device login. Approve the displayed code here.</p>'
+                  + '<p>No computers signed in yet.</p>'
+                  + '<p class="muted">Install Laryn for Windows, open Settings, and sign in with the same Google account.</p>'
                 + '</div>'
               : '<ul class="device-list" role="list">' + devices.map(device => (
                   '<li class="device-row">'
@@ -2409,7 +2414,7 @@ function renderDashboardPage(): string {
                       + '<strong class="truncate">' + escapeHtml(device.deviceName) + '</strong>'
                       + '<small>' + escapeHtml(device.lastSeenAt ? "Last seen " + formatDate(device.lastSeenAt) : "Paired " + formatDate(device.createdAt)) + '</small>'
                     + '</div>'
-                    + '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm"' + (revokingDevices.has(device.id) ? " disabled" : "") + '>' + (revokingDevices.has(device.id) ? "Revoking..." : "Revoke") + '</button>'
+                    + '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm"' + (revokingDevices.has(device.id) ? " disabled" : "") + '>' + (revokingDevices.has(device.id) ? "Signing out…" : "Sign out") + '</button>'
                   + '</li>'
                 )).join("") + '</ul>')
         + '</article>';
@@ -2433,6 +2438,21 @@ function renderDashboardPage(): string {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return "unknown";
       return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function formatPlanStatus(status, fallbackActive) {
+      if (status === "active") return "Active";
+      if (status === "trialing") return "Trial";
+      if (status === "past_due") return "Past due";
+      if (status === "canceled" || status === "cancelled") return "Cancelled";
+      if (status === "incomplete") return "Incomplete";
+      if (status === "incomplete_expired") return "Expired";
+      if (status === "unpaid") return "Unpaid";
+      if (status === "paused") return "Paused";
+      if (status) {
+        return status.replace(/_/g, " ").replace(/\\b\\w/g, function (c) { return c.toUpperCase(); });
+      }
+      return fallbackActive ? "Active" : "Free";
     }
 
     function creditUsagePercent(credits) {
@@ -2526,7 +2546,10 @@ code{font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace
 .link-action:hover{color:var(--brand)}
 .link-action:hover svg{transform:translateX(2px)}
 
-.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-0.012em;color:var(--text)}
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-0.012em;color:var(--text);text-decoration:none}
+.brand:hover{color:var(--text)}
+.brand-logo{display:block;width:30px;height:30px;border-radius:8px;flex-shrink:0}
+.brand-name{display:inline-block;line-height:1}
 .brand-mark{display:inline-block;width:22px;height:22px;background:linear-gradient(135deg,#1e64f0,#2553e8 50%,#22d3ee 100%);filter:drop-shadow(0 0 14px rgba(79,143,255,.55));-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='24 24 78 74'%3E%3Cpath d='M59.6 64.2c-1.7 0-3.6 1.3-3.6 3.1v9.3c0 1.8-1.6 3.3-3.3 3.3h-9.4c-5.1 0-10.3-3.8-10.3-9.6V34.1c0-1.8 1.5-3.2 3.8-3.2s4.3 1.5 4.3 3.7v35.5c0 1.4 1.5 3 3.3 3 1.8.1 3.5-1.2 3.5-3V34.6c0-5-4.3-10-9.8-10H36c-4.4 0-10 3.8-10 9.3v36.5c0 7.2 5.9 16.7 16.7 16.8h10.8c4.4 0 9-3.3 9.1-9.8V67.1c0-1.7-1.4-2.9-3-2.9Zm12.9-6.2c-1.7 0-3.4 1.4-3.4 3.1v33c0 1.6 1.5 2.9 3.2 2.9 1.8 0 3.4-1.1 3.4-3V61.1c0-1.7-1.5-3.2-3.2-3.1Zm12.6 9.9c-1.6.2-3.5 1.6-3.5 3.3v14.7c0 1.8 1.5 3.8 3.5 3.6 1.8 0 3.5-1.4 3.5-3.3v-15c0-1.8-1.5-3.3-3.5-3.3Zm12.1 6.7c-1.5 0-3.6 1.4-3.6 3.3 0 1.8 1.6 3.6 3.5 3.6 1.8 0 3.7-1.2 3.8-3.3s-1.7-3.8-3.7-3.6Z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='24 24 78 74'%3E%3Cpath d='M59.6 64.2c-1.7 0-3.6 1.3-3.6 3.1v9.3c0 1.8-1.6 3.3-3.3 3.3h-9.4c-5.1 0-10.3-3.8-10.3-9.6V34.1c0-1.8 1.5-3.2 3.8-3.2s4.3 1.5 4.3 3.7v35.5c0 1.4 1.5 3 3.3 3 1.8.1 3.5-1.2 3.5-3V34.6c0-5-4.3-10-9.8-10H36c-4.4 0-10 3.8-10 9.3v36.5c0 7.2 5.9 16.7 16.7 16.8h10.8c4.4 0 9-3.3 9.1-9.8V67.1c0-1.7-1.4-2.9-3-2.9Zm12.9-6.2c-1.7 0-3.4 1.4-3.4 3.1v33c0 1.6 1.5 2.9 3.2 2.9 1.8 0 3.4-1.1 3.4-3V61.1c0-1.7-1.5-3.2-3.2-3.1Zm12.6 9.9c-1.6.2-3.5 1.6-3.5 3.3v14.7c0 1.8 1.5 3.8 3.5 3.6 1.8 0 3.5-1.4 3.5-3.3v-15c0-1.8-1.5-3.3-3.5-3.3Zm12.1 6.7c-1.5 0-3.6 1.4-3.6 3.3 0 1.8 1.6 3.6 3.5 3.6 1.8 0 3.7-1.2 3.8-3.3s-1.7-3.8-3.7-3.6Z'/%3E%3C/svg%3E") center/contain no-repeat}
 
 .badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
@@ -2795,7 +2818,7 @@ function dashboardCss(): string {
 
 /* ---------- Page shell ---------- */
 .dash-main{padding:48px 0 96px;background:radial-gradient(900px 500px at 10% -10%,rgba(79,143,255,.12),transparent 60%),radial-gradient(700px 380px at 90% 0%,rgba(34,211,238,.08),transparent 60%),var(--bg)}
-.dash-shell{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:grid;gap:28px}
+.dash-shell{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:grid;gap:28px;min-width:0}
 
 .dash-page-head{display:grid;gap:10px}
 .dash-page-head h1{font-size:clamp(30px,3.6vw,44px);font-weight:600;letter-spacing:-0.022em;color:var(--text);max-width:24ch}
@@ -2829,18 +2852,19 @@ function dashboardCss(): string {
 .dash-hero-empty .dash-hero-actions{margin:0;flex-direction:column;align-items:flex-end;gap:10px}
 
 /* ---------- Content grid ---------- */
-.dash-content{display:grid;gap:24px}
-.dash-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:20px}
+.dash-content{display:grid;gap:24px;min-width:0}
+.dash-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px}
 
-.dash-card{padding:24px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-card);display:grid;align-content:start;gap:16px;min-width:0}
-.dash-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
-.dash-card-title{font-size:18px;font-weight:600;letter-spacing:-0.012em;color:var(--text);margin-top:8px}
-.dash-card-pill{font-size:11px;font-weight:600;color:var(--text-soft);padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.dash-card{padding:26px 24px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-card);display:grid;align-content:start;gap:16px;min-width:0}
+.dash-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;min-width:0}
+.dash-card-head > div{min-width:0}
+.dash-card-title{font-size:18px;font-weight:600;letter-spacing:-0.012em;color:var(--text);margin-top:8px;min-width:0}
+.dash-card-pill{font-size:11px;font-weight:600;color:var(--text-soft);padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong);white-space:nowrap}
 
-.dash-card-usage{grid-column:span 4}
-.dash-card-stats{grid-column:span 2}
-.dash-card-account{grid-column:span 2}
-.dash-card-devices{grid-column:span 4}
+.dash-card-usage{grid-column:span 8}
+.dash-card-account{grid-column:span 4}
+.dash-card-stats{grid-column:span 5}
+.dash-card-devices{grid-column:span 7}
 
 /* ---------- Usage meter ---------- */
 .usage-meter{display:grid;gap:10px;margin-top:4px}
@@ -2857,16 +2881,14 @@ function dashboardCss(): string {
 .usage-overage small{font-size:12px;color:var(--text-soft)}
 
 /* ---------- Stat grid ---------- */
-.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
-.stat-item{padding:8px 16px;display:grid;gap:4px;border-left:1px solid var(--line)}
-.stat-item:first-child{padding-left:0;border-left:0}
-.stat-item:last-child{padding-right:0}
-.stat-item dt{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mute);font-weight:600}
-.stat-item dd{font-size:24px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum"}
+.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:end}
+.stat-item{display:grid;gap:8px;min-width:0}
+.stat-item dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-item dd{font-size:28px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum";line-height:1}
 
 /* ---------- Key/value list ---------- */
 .kv-list{display:grid;gap:1px;border-radius:var(--radius);overflow:hidden;background:var(--line)}
-.kv-row{background:var(--surface-soft);display:grid;grid-template-columns:90px 1fr;gap:14px;padding:11px 14px;align-items:center;min-width:0}
+.kv-row{background:var(--surface-soft);display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;padding:11px 14px;align-items:center;min-width:0}
 .kv-row dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:600}
 .kv-row dd{font-size:14px;color:var(--text);min-width:0}
 
@@ -2875,7 +2897,7 @@ function dashboardCss(): string {
 .empty-state p{font-size:14px;line-height:1.55}
 .empty-state p:first-child{color:var(--text);font-weight:600}
 .device-list{list-style:none;display:grid;gap:8px}
-.device-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line);transition:box-shadow 120ms ease,background-color 120ms ease}
+.device-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line);transition:box-shadow 120ms ease,background-color 120ms ease;min-width:0}
 .device-row:hover{box-shadow:inset 0 0 0 1px var(--line-bright);background:rgba(255,255,255,.03)}
 .device-icon{width:36px;height:36px;border-radius:10px;background:rgba(79,143,255,.12);box-shadow:inset 0 0 0 1px rgba(79,143,255,.28);color:var(--brand);display:grid;place-items:center;flex:0 0 auto}
 .device-text{display:grid;gap:2px;min-width:0}
@@ -2885,21 +2907,24 @@ function dashboardCss(): string {
 /* ---------- Responsive ---------- */
 @media(max-width:1080px){
   .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .dash-card-usage,.dash-card-devices{grid-column:span 2}
-  .dash-card-stats,.dash-card-account{grid-column:span 1}
+  .dash-card-usage,.dash-card-account,.dash-card-stats,.dash-card-devices{grid-column:span 2}
 }
 @media(max-width:760px){
   .dash-topnav{display:none}
-  .dash-grid{grid-template-columns:1fr}
+  .dash-grid{grid-template-columns:1fr;gap:16px}
   .dash-card-usage,.dash-card-stats,.dash-card-account,.dash-card-devices{grid-column:auto}
   .approval-card{flex-direction:column;align-items:flex-start}
   .dash-hero{padding:28px 24px}
   .dash-hero-empty{grid-template-columns:1fr;text-align:left}
   .dash-hero-empty .dash-hero-actions{align-items:stretch}
   .dash-hero-empty .dash-hero-actions .btn{width:100%}
-  .stat-grid{grid-template-columns:1fr;gap:1px;background:var(--line);border-radius:var(--radius);overflow:hidden}
-  .stat-item{background:var(--surface-soft);padding:12px 14px;border-left:0;border-top:0}
+  .stat-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
   .user-pill-text{display:none}
+}
+@media(max-width:480px){
+  .stat-grid{grid-template-columns:1fr;gap:14px;padding-top:4px;border-top:1px solid var(--line)}
+  .stat-item{padding-top:14px;border-top:1px solid var(--line)}
+  .stat-item:first-child{padding-top:0;border-top:0}
 }
 `;
 }
