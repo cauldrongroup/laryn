@@ -1253,6 +1253,8 @@ function SectionWorker({
           tone={status.workerStatus === "online" ? "good" : "warn"}
         />
         <DefinitionRow label="Hotkey" value={hotkey} />
+        <DefinitionRow label="Version" value={status.appVersion} mono />
+        <DefinitionRow label="Update" value={status.releaseName} mono />
       </div>
       <button
         className="btn btn-secondary w-full"

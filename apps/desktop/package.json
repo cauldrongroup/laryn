@@ -17,12 +17,14 @@
     "build:preload": "vite build --config vite.preload.config.ts",
     "build:electron": "pnpm build:main && pnpm build:preload",
     "build": "pnpm build:renderer && pnpm build:electron && electron-builder --dir",
+    "dist:win": "pnpm build:renderer && pnpm build:electron && electron-builder --win nsis --publish never",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx"
   },
   "dependencies": {
     "@laryn/shared": "workspace:*",
     "@vitejs/plugin-react": "^5.0.0",
+    "electron-updater": "^6.8.3",
     "lucide-react": "^0.511.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -41,6 +43,10 @@
   "build": {
     "appId": "dev.laryn.desktop",
     "productName": "Laryn",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "assets/**",
       "config.cjs",
@@ -52,6 +58,18 @@
     "icon": "assets/logo.png",
     "win": {
       "target": "nsis"
-    }
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "${env.LARYN_UPDATE_BASE_URL}"
+      }
+    ]
   }
 }

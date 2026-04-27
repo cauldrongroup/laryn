@@ -12,6 +12,7 @@ type AudioMonitorGraph = {
 };
 
 const INITIAL_STATUS: DesktopStatus = {
+  appVersion: "0.0.0",
   authStatus: "signed-out",
   hotkey: "Control+Super",
   hotkeyStatus: {
@@ -21,6 +22,7 @@ const INITIAL_STATUS: DesktopStatus = {
   isRecording: false,
   state: "idle",
   message: "Starting",
+  releaseName: "local-dev",
   workerStatus: "unknown",
   workerUrl: ""
 };

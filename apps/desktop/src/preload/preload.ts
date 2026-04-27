@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld("laryn", {
 });
 
 export type DesktopStatus = {
+  appVersion: string;
   authStatus: "ok" | "signed-out" | "pending" | "subscription-required" | "unauthorized" | "unknown";
   account?: {
     id: string;
@@ -85,6 +86,7 @@ export type DesktopStatus = {
   state: "idle" | "recording" | "transcribing" | "pasting" | "error";
   message: string;
   lastTranscript?: TranscriptionResponse;
+  releaseName: string;
   workerStatus: "online" | "offline" | "unauthorized" | "unknown";
   workerUrl: string;
 };

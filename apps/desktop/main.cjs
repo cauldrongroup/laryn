@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, clipboard, nativeImage, Notification, shell, screen, safeStorage, session } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const fs = require("node:fs");
@@ -8,6 +9,7 @@ const { loadConfig, normalizeCleanupTier } = require("./config.cjs");
 
 const execFileAsync = promisify(execFile);
 const config = loadConfig(__dirname);
+const packageInfo = loadPackageInfo(__dirname);
 
 let mainWindow = null;
 let dictationWindow = null;
@@ -48,6 +50,7 @@ const hotkeyState = {
 };
 
 const status = {
+  appVersion: app.getVersion(),
   authStatus: "signed-out",
   hotkey: activeHotkey,
   hotkeyStatus: {
@@ -57,6 +60,7 @@ const status = {
   isRecording: false,
   workerStatus: "unknown",
   workerUrl: config.workerUrl,
+  releaseName: packageInfo.releaseName,
   state: "idle",
   message: "Sign in to connect Laryn"
 };
@@ -91,6 +95,7 @@ app.whenReady().then(() => {
   createTray();
   registerNativeHotkey();
   registerIpc();
+  configureAutoUpdates();
   void refreshWorkerAuth();
 });
 
@@ -433,6 +438,71 @@ function registerIpc() {
     }
     return result;
   });
+}
+
+function configureAutoUpdates() {
+  if (!app.isPackaged) {
+    logInfo("updates:skip-unpackaged");
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => logInfo("updates:checking"));
+  autoUpdater.on("update-available", (info) => logInfo("updates:available", summarizeUpdateInfo(info)));
+  autoUpdater.on("update-not-available", (info) => logInfo("updates:not-available", summarizeUpdateInfo(info)));
+  autoUpdater.on("download-progress", (progress) => {
+    logInfo("updates:download-progress", {
+      percent: Math.round(progress.percent || 0),
+      transferred: progress.transferred,
+      total: progress.total
+    });
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    logInfo("updates:downloaded", summarizeUpdateInfo(info));
+    new Notification({
+      title: "Laryn update ready",
+      body: "The update will install the next time Laryn restarts."
+    }).show();
+  });
+  autoUpdater.on("error", (error) => logError("updates:error", error));
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => logError("updates:check-failed", error));
+  }, 15000);
+}
+
+function loadPackageInfo(baseDir) {
+  const candidates = [
+    path.join(baseDir, "package.json"),
+    path.join(baseDir, "..", "package.json")
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) {
+        continue;
+      }
+
+      const parsed = JSON.parse(fs.readFileSync(candidate, "utf8"));
+      return {
+        releaseName: typeof parsed.releaseName === "string" && parsed.releaseName ? parsed.releaseName : "local-dev"
+      };
+    } catch {
+      // Continue to the next candidate. This only affects debug metadata.
+    }
+  }
+
+  return { releaseName: "local-dev" };
+}
+
+function summarizeUpdateInfo(info) {
+  return {
+    version: info?.version,
+    releaseDate: info?.releaseDate,
+    files: Array.isArray(info?.files) ? info.files.map((file) => file.url).filter(Boolean) : undefined
+  };
 }
 
 function setHotkey(hotkey) {

@@ -17,7 +17,8 @@
     "desktop:dev:renderer": "pnpm --filter @laryn/desktop dev:renderer",
     "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
     "desktop:dev:hot": "pnpm --filter @laryn/desktop dev:hot",
-    "desktop:build": "pnpm --filter @laryn/desktop build"
+    "desktop:build": "pnpm --filter @laryn/desktop build",
+    "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",

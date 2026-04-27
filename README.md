@@ -94,6 +94,20 @@ Deploy with:
 pnpm worker:deploy
 ```
 
+## Desktop releases
+
+Windows installers are built manually from `.github/workflows/desktop-release.yml`. Open the workflow in GitHub Actions, choose **Run workflow**, and enter the semver version to release.
+
+The workflow expects these GitHub repository variables:
+
+- `LARYN_R2_BUCKET`: `laryn-updates`
+- `LARYN_UPDATE_BASE_URL`: `https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev`
+- `CLOUDFLARE_ACCOUNT_ID`: `6d6529fc50727497faffecc2e510e191`
+
+It also needs a `CLOUDFLARE_API_TOKEN` repository secret with R2 object write access. Each manual run builds the NSIS installer, generates a friendly two-word update name, uploads the installer assets to the GitHub Release, and publishes `latest.yml`, the `.exe`, and the `.blockmap` to R2 for background auto-updates.
+
+Installed desktop builds check the R2 update feed after startup, download updates in the background, and install the downloaded update the next time Laryn restarts. The app version and generated update name are visible in Settings for debug purposes.
+
 ## Hotkey note
 
 The requested binding is `Ctrl + Win`. Windows and Electron can be inconsistent with modifier-only global shortcuts, so the app tries `Control+Super` first and falls back to `Control+Super+Space`. The active binding is shown in the app.
