@@ -1499,19 +1499,25 @@ async function readProviderJsonResponse(response: Response, errorPrefix: string,
 
 function renderMarketingPage(env: Env, page: "home" | "pricing" | "download"): string {
   const appUrl = publicAppUrl(env);
-  const title = page === "pricing" ? "Laryn Pro pricing" : page === "download" ? "Download Laryn" : "Laryn — speak once, paste clean text";
-  const isPricing = page === "pricing";
-  const isDownload = page === "download";
-  const heroTitle = isPricing
-    ? "One plan. Pro dictation everywhere."
-    : isDownload
-      ? "Download Laryn for Windows."
-      : "Speak once. Paste clean text anywhere.";
-  const heroLede = isPricing
-    ? "Laryn Pro is $5/month with $3 of included usage credit. Transcription and cleanup usage are metered at model cost, and overage is billed through Polar."
-    : isDownload
-      ? "Pair the desktop app with your Google account, keep billing in the web dashboard, and dictate into any Windows application."
-      : "Laryn turns a hold-to-talk shortcut into polished text in the app you already have focused. Built for fast notes, support replies, drafts, and developer workflows.";
+  const favicon = logoFaviconDataUrl();
+  const title =
+    page === "pricing"
+      ? "Pricing — Laryn Pro"
+      : page === "download"
+        ? "Download Laryn for Windows"
+        : "Laryn — press, speak, pasted.";
+  const description =
+    page === "pricing"
+      ? "Laryn Pro is $5/month with $3 of monthly transcription credit included. No seats, no markup — just metered model cost beyond the credit."
+      : page === "download"
+        ? "Install Laryn for Windows in under a minute. Pair your account with a short code, then dictate into any focused application."
+        : "Hold a hotkey, talk normally, and Laryn pastes clean punctuated text into whatever app is focused. Notes, replies, code comments, drafts — faster than typing.";
+  const body =
+    page === "pricing"
+      ? pricingBody(appUrl)
+      : page === "download"
+        ? downloadBody(appUrl)
+        : homeBody(appUrl);
 
   return html(`<!doctype html>
 <html lang="en">
@@ -1519,132 +1525,569 @@ function renderMarketingPage(env: Env, page: "home" | "pricing" | "download"): s
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
+  <meta name="description" content="${description}" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="${favicon}" />
   <title>${title}</title>
   <style>${sharedCss()}${marketingCss()}</style>
 </head>
 <body class="marketing">
-  <header class="site-header">
-    <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
-    <nav>
-      <a href="/" data-active="${page === "home"}">Product</a>
-      <a href="/pricing" data-active="${page === "pricing"}">Pricing</a>
-      <a href="/download" data-active="${page === "download"}">Download</a>
-      <a class="btn btn-secondary" href="/app">Account</a>
-    </nav>
-  </header>
-
-  <main>
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Windows dictation for people who write all day</p>
-        <h1>${heroTitle}</h1>
-        <p class="lede">${heroLede}</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="${appUrl}/app">Get Laryn Pro</a>
-          <a class="btn btn-ghost-light" href="/download">Download for Windows →</a>
-        </div>
-        <ul class="hero-points" role="list">
-          <li><span class="dot dot-good"></span>Hold <kbd>Ctrl</kbd> + <kbd>Win</kbd> to dictate</li>
-          <li><span class="dot dot-good"></span>Whisper transcription via Cloudflare AI Gateway</li>
-          <li><span class="dot dot-good"></span>$3 monthly usage credit included with Pro</li>
-        </ul>
-      </div>
-
-      <aside class="hero-mock" aria-hidden="true">
-        <div class="mock-bar">
-          <div class="mock-bar-dots"><span></span><span></span><span></span></div>
-          <small>laryn — dictation overlay</small>
-        </div>
-        <div class="mock-overlay" data-state="recording">
-          <div class="mock-mic"></div>
-          <div class="mock-text">
-            <strong>Listening</strong>
-            <span>Release Ctrl + Win to transcribe</span>
-          </div>
-          <div class="mock-wave">
-            ${Array.from({ length: 22 }).map((_, i) => `<span style="--h:${20 + (Math.sin(i / 1.6) * 0.5 + 0.5) * 70}%"></span>`).join("")}
-          </div>
-          <div class="mock-timer">0:08</div>
-        </div>
-        <div class="mock-paste">
-          <small class="mock-paste-label">PASTED</small>
-          <p>Following up on the deploy — the worker is healthy and the new dictation pill no longer flickers.</p>
-        </div>
-      </aside>
-    </section>
-
-    <section class="features">
-      <article class="feature">
-        <span class="feature-num">01</span>
-        <h2>Desktop-first</h2>
-        <p>No browser tab required while working. The web account handles billing and device pairing; the desktop app stays focused on dictation.</p>
-      </article>
-      <article class="feature">
-        <span class="feature-num">02</span>
-        <h2>Account controlled</h2>
-        <p>Sign in with Google, pair devices with short codes, revoke devices any time, and manage your Pro subscription from one dashboard.</p>
-      </article>
-      <article class="feature">
-        <span class="feature-num">03</span>
-        <h2>Usage-aware billing</h2>
-        <p>Each successful transcription records its model cost against your monthly credit, with overage handled automatically by Polar.</p>
-      </article>
-    </section>
-
-    <section class="cta-band">
-      <div class="cta-copy">
-        <p class="eyebrow">${isDownload ? "Next step" : "Plan"}</p>
-        <h2>${isDownload ? "Install, then pair from Settings." : "$5/month with usage credit."}</h2>
-        <p>${isDownload ? "After installing, open Settings, start device login, and approve the displayed code in your browser." : "Laryn Pro includes $3 of monthly usage credit; usage beyond that is metered through Polar."}</p>
-      </div>
-      <a class="btn btn-primary btn-lg" href="${appUrl}/app">${isPricing ? "Start checkout" : "Open account"}</a>
-    </section>
-
-    <footer class="site-footer">
-      <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
-      <small>© ${new Date().getFullYear()} Laryn. Windows dictation, cleanly pasted.</small>
-    </footer>
-  </main>
+  ${marketingHeader(page, appUrl)}
+  <main>${body}</main>
+  ${marketingFooter()}
 </body>
 </html>`);
 }
 
+function marketingHeader(currentPage: "home" | "pricing" | "download", appUrl: string): string {
+  return `<header class="site-header">
+    <div class="site-header-inner">
+      <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href="/" data-active="${currentPage === "home"}">Product</a>
+        <a href="/pricing" data-active="${currentPage === "pricing"}">Pricing</a>
+        <a href="/download" data-active="${currentPage === "download"}">Download</a>
+      </nav>
+      <div class="site-header-actions">
+        <a class="link-action site-header-link" href="${appUrl}/app">Sign in</a>
+        <a class="btn btn-primary btn-sm" href="/download">Download</a>
+      </div>
+    </div>
+  </header>`;
+}
+
+function marketingFooter(): string {
+  return `<footer class="site-footer">
+    <div class="site-footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
+        <p>Press, speak, pasted. Windows-first dictation for writers, devs, and support teams.</p>
+      </div>
+      <div class="footer-cols">
+        <div>
+          <h3>Product</h3>
+          <ul role="list">
+            <li><a href="/">Overview</a></li>
+            <li><a href="/pricing">Pricing</a></li>
+            <li><a href="/download">Download</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Account</h3>
+          <ul role="list">
+            <li><a href="/app">Dashboard</a></li>
+            <li><a href="/app">Sign in</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Built on</h3>
+          <ul role="list">
+            <li>Cloudflare Workers AI</li>
+            <li>Whisper large-v3-turbo</li>
+            <li>Polar billing</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="site-footer-bottom">
+      <small>© ${new Date().getFullYear()} Laryn. Windows dictation, cleanly pasted.</small>
+      <small>v0.1 · Built for Windows 10 + 11</small>
+    </div>
+  </footer>`;
+}
+
+function homeBody(appUrl: string): string {
+  return `
+    <section class="hero">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="page-shell hero-shell">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Windows dictation, on a hotkey</p>
+          <h1>Press, speak, <span class="hero-accent">pasted</span>.</h1>
+          <p class="lede">Hold <kbd>Ctrl</kbd> <kbd>Win</kbd>, talk normally, and Laryn drops cleanly punctuated text into whatever app is focused. Email, Slack, code comments, docs — pasted faster than you can type.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="${appUrl}/app">Get Laryn Pro · $5/mo</a>
+            <a class="link-action" href="/download"><span>Download for Windows</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+          </div>
+          <ul class="hero-meta" role="list">
+            <li><span class="hero-meta-dot dot-good"></span>$3 of usage credit / month</li>
+            <li><span class="hero-meta-dot dot-good"></span>Whisper large-v3-turbo</li>
+            <li><span class="hero-meta-dot dot-good"></span>Pastes into any focused app</li>
+          </ul>
+        </div>
+        <aside class="hero-mock" aria-hidden="true">
+          <div class="mock-frame">
+            <div class="mock-bar">
+              <div class="mock-bar-dots"><span></span><span></span><span></span></div>
+              <small>laryn — overlay</small>
+              <span class="mock-bar-kbd">CTRL + WIN</span>
+            </div>
+            <div class="mock-overlay" data-state="recording">
+              <div class="mock-mic"></div>
+              <div class="mock-text">
+                <strong>Listening</strong>
+                <span>Release Ctrl + Win to transcribe</span>
+              </div>
+              <div class="mock-wave">
+                ${Array.from({ length: 28 })
+                  .map(
+                    (_, i) =>
+                      `<span style="--h:${Math.round(18 + (Math.sin(i / 1.6) * 0.5 + 0.5) * 72)}%;--d:${i * 60}ms"></span>`
+                  )
+                  .join("")}
+              </div>
+              <div class="mock-timer">0:08</div>
+            </div>
+            <div class="mock-paste">
+              <div class="mock-paste-head">
+                <small class="mock-paste-label">Pasted into Slack · 0.7s after release</small>
+                <span class="mock-paste-app">slack.com</span>
+              </div>
+              <p class="mock-typing"><span>Following up on the deploy — the worker is healthy and the new dictation pill no longer flickers. Shipping the patch right after standup.</span></p>
+            </div>
+          </div>
+          <div class="mock-glow" aria-hidden="true"></div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section section-flow">
+      <div class="page-shell section-head">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>How it works</p>
+        <h2>Three keys. Three seconds. Done.</h2>
+        <p class="section-lede">Laryn replaces the typing-then-editing loop with a single hotkey. There's no popup to dismiss, no transcript to copy — the cursor is already where you want the text.</p>
+      </div>
+      <ol class="flow" role="list">
+        <li class="flow-step">
+          <div class="flow-step-num">01</div>
+          <h3>Hold the hotkey</h3>
+          <p>Default is <kbd>Ctrl</kbd>+<kbd>Win</kbd>. Customize from Settings — any modifier combo works.</p>
+        </li>
+        <li class="flow-step">
+          <div class="flow-step-num">02</div>
+          <h3>Talk normally</h3>
+          <p>A discreet pill confirms it's listening. Pause naturally — Laryn keeps recording while the keys are held.</p>
+        </li>
+        <li class="flow-step">
+          <div class="flow-step-num">03</div>
+          <h3>Release. It's pasted.</h3>
+          <p>Whisper transcribes, Laryn cleans punctuation if you want it, then pastes into whatever window had focus.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section section-cases">
+      <div class="page-shell section-head section-head-row">
+        <div>
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Where Laryn pastes</p>
+          <h2>Anywhere a cursor blinks.</h2>
+          <p class="section-lede">There's no integration list because there's no integration. If the app accepts keyboard input on Windows, Laryn fills it.</p>
+        </div>
+      </div>
+      <div class="page-shell">
+        <div class="case-grid">
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Slack reply</span>
+              <span class="case-time">0.6s</span>
+            </header>
+            <p>"Following up — the deploy looks good. Let's ship after standup, then I'll write up the migration notes."</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Code comment</span>
+              <span class="case-time">0.5s</span>
+            </header>
+            <p class="mono">// Round-trip the timestamp before persisting; the API returns UTC and the UI assumes local.</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Email draft</span>
+              <span class="case-time">1.1s</span>
+            </header>
+            <p>"Hey Maya — thanks for the prompt feedback. I'll wire up the import flow this afternoon and send a Loom once it's working end-to-end."</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Notes</span>
+              <span class="case-time">0.4s</span>
+            </header>
+            <p>Standup notes: shipped the cleanup tier toggle, regression on the overlay z-index, sketching device-pairing UX for next week.</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Support reply</span>
+              <span class="case-time">0.8s</span>
+            </header>
+            <p>"Got it — the issue is the device token expired after the migration. I've reissued it; pair from Settings and the queue should resume."</p>
+          </article>
+          <article class="case-card">
+            <header class="case-card-head">
+              <span class="case-tag">Search bar</span>
+              <span class="case-time">0.3s</span>
+            </header>
+            <p class="mono">react query optimistic update typescript</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-why">
+      <div class="page-shell section-head">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Why Laryn</p>
+        <h2>Built like a power-user tool, priced like a coffee.</h2>
+      </div>
+      <div class="page-shell">
+        <dl class="why-grid">
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M8 1.5a.75.75 0 0 1 .75.75v2.5a3.25 3.25 0 0 1-1.5 2.74V11a.75.75 0 0 1-1.5 0V7.49a3.25 3.25 0 0 1-1.5-2.74v-2.5a.75.75 0 1 1 1.5 0v2.5a1.75 1.75 0 0 0 3.5 0v-2.5A.75.75 0 0 1 8 1.5Zm-3.5 11a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5H10v.5a.75.75 0 0 1-1.5 0V13.25h-1V13.75a.75.75 0 0 1-1.5 0v-.5h-.75a.75.75 0 0 1-.75-.75Z"/></svg>
+              Hold-to-talk hotkey
+            </dt>
+            <dd>Modifier-only shortcuts work. Hold for as long as you need; release to transcribe. No "click to start" UI in the way.</dd>
+          </div>
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M2.5 3.75A2.25 2.25 0 0 1 4.75 1.5h6.5a2.25 2.25 0 0 1 2.25 2.25v8.5a2.25 2.25 0 0 1-2.25 2.25h-6.5A2.25 2.25 0 0 1 2.5 12.25v-8.5Zm2.5-.75a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h6.5a.75.75 0 0 0 .75-.75v-8.5a.75.75 0 0 0-.75-.75H5Zm1 2.5a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 5.5Zm0 3a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 0 1.5h-2.5A.75.75 0 0 1 6 8.5Z"/></svg>
+              Cloudflare-backed accuracy
+            </dt>
+            <dd>Whisper large-v3-turbo via Workers AI Gateway, with a tunable cleanup pass that fixes punctuation without rewriting your voice.</dd>
+          </div>
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M8 1.5c.41 0 .75.34.75.75v.79a5.5 5.5 0 1 1-1.5 0v-.79c0-.41.34-.75.75-.75ZM4 8a4 4 0 1 0 8 0 4 4 0 0 0-8 0Zm4-2.25a.75.75 0 0 1 .75.75v1.5h1a.75.75 0 0 1 0 1.5h-1.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>
+              Honest, metered pricing
+            </dt>
+            <dd>$5/month and $3 of usage credit. Anything over the credit is metered at model cost via Polar — no markup, no per-seat math.</dd>
+          </div>
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5C2 13.22 2.78 14 3.75 14h8.5A1.75 1.75 0 0 0 14 12.25v-8.5A1.75 1.75 0 0 0 12.25 2h-8.5Zm0 1.5h8.5a.25.25 0 0 1 .25.25V6h-9V3.75a.25.25 0 0 1 .25-.25Zm-.25 4h9v4.75a.25.25 0 0 1-.25.25h-8.5a.25.25 0 0 1-.25-.25V7.5Z"/></svg>
+              On-device history
+            </dt>
+            <dd>Last 500 transcripts live on the desktop only — search them, copy them, delete them. Nothing syncs unless you choose to.</dd>
+          </div>
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M8 1.5a.75.75 0 0 1 .75.75v3.5h3.5a.75.75 0 0 1 0 1.5h-3.5v3.5a.75.75 0 0 1-1.5 0V7.25h-3.5a.75.75 0 0 1 0-1.5h3.5v-3.5A.75.75 0 0 1 8 1.5Z"/></svg>
+              Cleanup, your choice
+            </dt>
+            <dd>Pick off, cheap, standard, or premium per request. Off pastes the raw Whisper output; the others lightly fix dictation artifacts.</dd>
+          </div>
+          <div class="why-item">
+            <dt>
+              <svg viewBox="0 0 16 16" aria-hidden="true" width="16" height="16"><path fill="currentColor" d="M2.75 3a.75.75 0 0 0-.75.75v8.5c0 .41.34.75.75.75h10.5a.75.75 0 0 0 .75-.75V5.5h-4.25A1.75 1.75 0 0 1 8 3.75V3H2.75ZM9.5 3v.75c0 .14.11.25.25.25h4l-4.25-1Z"/></svg>
+              Per-device pairing
+            </dt>
+            <dd>Approve each desktop with a short code. Revoke from the dashboard any time — no password to rotate, no token to copy.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section section-pricing-teaser">
+      <div class="page-shell pricing-teaser">
+        <div class="pricing-teaser-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>One plan</p>
+          <h2>$5/month, $3 in usage credit.</h2>
+          <p class="section-lede">Most people stay inside the included credit. If a heavy day pushes you over, the overage is metered through Polar at the model's actual cost.</p>
+          <ul class="hero-meta" role="list">
+            <li><span class="hero-meta-dot dot-good"></span>Cancel from the dashboard, any time</li>
+            <li><span class="hero-meta-dot dot-good"></span>No per-seat pricing — pair as many devices as you want</li>
+            <li><span class="hero-meta-dot dot-good"></span>Whisper transcription billed at model cost beyond credit</li>
+          </ul>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="${appUrl}/app">Start Pro</a>
+            <a class="link-action" href="/pricing"><span>See pricing details</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+          </div>
+        </div>
+        <div class="pricing-teaser-card">
+          <div class="pricing-card pricing-card-emphasized">
+            <div class="pricing-card-head">
+              <span class="badge badge-brand">Pro</span>
+              <span class="pricing-price"><span class="pricing-price-num">$5</span><span class="pricing-price-suffix">/month</span></span>
+            </div>
+            <p class="pricing-card-desc">Pro dictation everywhere on Windows.</p>
+            <ul class="pricing-features" role="list">
+              <li>$3 of monthly transcription credit</li>
+              <li>Whisper large-v3-turbo + cleanup tiers</li>
+              <li>Unlimited paired desktops</li>
+              <li>Local-only transcript history</li>
+              <li>Custom hotkeys + cleanup quality</li>
+            </ul>
+            <a class="btn btn-primary btn-block" href="${appUrl}/app">Get Pro</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-cta">
+      <div class="page-shell">
+        <div class="cta-band">
+          <div class="cta-glyph" aria-hidden="true"><span class="cta-glyph-mic"></span></div>
+          <div class="cta-copy">
+            <h2>Type less. Ship more.</h2>
+            <p>Install Laryn for Windows, pair from Settings, and your next paragraph is one hotkey away.</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="/download">Download for Windows</a>
+            <a class="link-action" href="${appUrl}/app"><span>Open account</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function pricingBody(appUrl: string): string {
+  return `
+    <section class="hero hero-compact">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="page-shell hero-shell-centered">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Pricing</p>
+        <h1>One plan. No surprises.</h1>
+        <p class="lede">Laryn Pro is $5 a month. The first $3 of transcription each month is on us. Beyond that you pay model cost — no markup, no minimums.</p>
+      </div>
+    </section>
+
+    <section class="section section-pricing">
+      <div class="page-shell pricing-grid">
+        <article class="pricing-card pricing-card-emphasized">
+          <div class="pricing-card-head">
+            <span class="badge badge-brand">Pro</span>
+            <span class="pricing-price"><span class="pricing-price-num">$5</span><span class="pricing-price-suffix">/month</span></span>
+          </div>
+          <p class="pricing-card-desc">For everyone using Laryn day to day.</p>
+          <ul class="pricing-features" role="list">
+            <li>$3 of transcription credit, every month</li>
+            <li>Whisper large-v3-turbo speech-to-text</li>
+            <li>Cleanup tiers: off, cheap, standard, premium</li>
+            <li>Unlimited paired desktops on one account</li>
+            <li>Local transcript history (last 500 entries)</li>
+            <li>Custom hotkey, microphone, and cleanup model</li>
+            <li>Cancel any time from the dashboard</li>
+          </ul>
+          <a class="btn btn-primary btn-block" href="${appUrl}/app">Start Pro</a>
+        </article>
+        <article class="pricing-card pricing-card-meta">
+          <h3>What's a usage credit?</h3>
+          <p>Every transcription has a real model cost — usually a fraction of a cent. Laryn records that cost against your monthly $3 credit so you can see exactly where your spend goes.</p>
+          <ul class="pricing-bullets" role="list">
+            <li><strong>Inside credit.</strong> Nothing extra to pay. The credit resets every billing cycle.</li>
+            <li><strong>Beyond credit.</strong> Overage is metered through Polar at the model's actual price.</li>
+            <li><strong>Zero usage.</strong> Quiet month? You still get the full $3 of credit on the next cycle.</li>
+          </ul>
+          <a class="link-action" href="${appUrl}/app"><span>See your live usage</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+        </article>
+      </div>
+
+      <div class="page-shell">
+        <div class="pricing-compare">
+          <h3>What $3 of credit looks like</h3>
+          <div class="compare-rows">
+            <div class="compare-row">
+              <strong>~600 minutes</strong>
+              <span>of dictated audio with cleanup off — the cheapest option.</span>
+            </div>
+            <div class="compare-row">
+              <strong>~120 minutes</strong>
+              <span>with the standard cleanup tier on every transcript.</span>
+            </div>
+            <div class="compare-row">
+              <strong>~60 minutes</strong>
+              <span>with premium cleanup on long-form dictation.</span>
+            </div>
+          </div>
+          <p class="compare-note">Estimates assume Whisper large-v3-turbo on Cloudflare AI Gateway and the listed cleanup tier. Real cost varies with audio length and cleanup model.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-faq">
+      <div class="page-shell section-head section-head-row">
+        <div>
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Billing FAQ</p>
+          <h2>The small print, in plain English.</h2>
+        </div>
+      </div>
+      <div class="page-shell">
+        <div class="faq-grid">
+          <details class="faq-item">
+            <summary>How does usage billing actually work?</summary>
+            <p>Each transcription records its model cost in micro-dollars. We sum that against your $3 monthly credit. If you go over, Polar bills the overage at the same model cost — no extra margin from us.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Can I see what I've spent?</summary>
+            <p>Yes. Open the dashboard at any time to see how much credit is consumed, how much remains, and any overage Polar has reported.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What happens if I cancel?</summary>
+            <p>You keep Pro until the end of the current billing cycle, then the desktop app falls back to the unauthenticated state. No data is deleted; pair again any time.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Is my audio stored anywhere?</summary>
+            <p>Audio is sent to the Worker, transcribed, and immediately discarded. Transcripts are saved locally on your desktop in the history panel — they never sync to our servers.</p>
+          </details>
+          <details class="faq-item">
+            <summary>How many devices can I pair?</summary>
+            <p>As many as you want, on the same account. Pair each one with a short device code from the desktop's Settings drawer; revoke from the dashboard.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Do you offer team or enterprise plans?</summary>
+            <p>Not yet. Right now Laryn is one plan, one price, no seats. If you're interested in something larger, get in touch.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-cta">
+      <div class="page-shell">
+        <div class="cta-band">
+          <div class="cta-glyph" aria-hidden="true"><span class="cta-glyph-mic"></span></div>
+          <div class="cta-copy">
+            <h2>Ready when you are.</h2>
+            <p>Sign in, install for Windows, and dictate into your next message.</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="${appUrl}/app">Start Pro</a>
+            <a class="link-action" href="/download"><span>Download Laryn</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function downloadBody(appUrl: string): string {
+  return `
+    <section class="hero hero-compact">
+      <div class="hero-bg" aria-hidden="true"></div>
+      <div class="page-shell hero-shell-centered">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Download · Windows 10 + 11</p>
+        <h1>Get Laryn for Windows.</h1>
+        <p class="lede">A 30 MB installer. No drivers, no admin gymnastics — sign in once and you're dictating into any focused app.</p>
+        <div class="hero-actions hero-actions-centered">
+          <a class="btn btn-primary btn-lg" href="${appUrl}/downloads/laryn-windows-latest.exe">Download for Windows · .exe</a>
+          <a class="link-action" href="${appUrl}/app"><span>Open account first</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+        </div>
+        <p class="download-meta">Latest build · Windows 10 (1903+) and Windows 11 · 64-bit only</p>
+      </div>
+    </section>
+
+    <section class="section section-flow">
+      <div class="page-shell section-head">
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Setup</p>
+        <h2>From zero to dictating in three steps.</h2>
+      </div>
+      <ol class="flow" role="list">
+        <li class="flow-step">
+          <div class="flow-step-num">01</div>
+          <h3>Install Laryn</h3>
+          <p>Run the installer and Laryn opens straight to the dictation panel. No reboot required.</p>
+        </li>
+        <li class="flow-step">
+          <div class="flow-step-num">02</div>
+          <h3>Sign in &amp; pair</h3>
+          <p>Open Settings → Account → Sign in with Google. The desktop shows a short device code; approve it in the browser.</p>
+        </li>
+        <li class="flow-step">
+          <div class="flow-step-num">03</div>
+          <h3>Press, speak, paste</h3>
+          <p>Hold <kbd>Ctrl</kbd>+<kbd>Win</kbd>, talk, release. Laryn pastes into whatever window had focus.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section section-specs">
+      <div class="page-shell specs-grid">
+        <article class="spec-card">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>System</p>
+          <h3>Requirements</h3>
+          <dl class="spec-list">
+            <div class="spec-row"><dt>OS</dt><dd>Windows 10 1903+ or Windows 11</dd></div>
+            <div class="spec-row"><dt>Architecture</dt><dd>x64</dd></div>
+            <div class="spec-row"><dt>RAM</dt><dd>4 GB minimum, 8 GB recommended</dd></div>
+            <div class="spec-row"><dt>Disk</dt><dd>120 MB after install</dd></div>
+            <div class="spec-row"><dt>Mic</dt><dd>Any input recognized by Windows</dd></div>
+            <div class="spec-row"><dt>Network</dt><dd>Internet for transcription</dd></div>
+          </dl>
+        </article>
+        <article class="spec-card spec-card-hotkey">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Hotkey</p>
+          <h3>Hold-to-talk shortcut</h3>
+          <div class="hotkey-display">
+            <kbd class="kbd-lg">Ctrl</kbd>
+            <span class="hotkey-plus">+</span>
+            <kbd class="kbd-lg">Win</kbd>
+          </div>
+          <p>Default binding. Modifier-only shortcuts can be flaky on Windows, so Laryn falls back to <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Space</kbd> automatically when needed.</p>
+          <p class="muted">Change it any time from Settings → Hotkey. Any modifier combo is supported.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-cta">
+      <div class="page-shell">
+        <div class="cta-band">
+          <div class="cta-glyph" aria-hidden="true"><span class="cta-glyph-mic"></span></div>
+          <div class="cta-copy">
+            <h2>Already installed?</h2>
+            <p>Open the desktop app, head to Settings → Account, and sign in to start dictating.</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="${appUrl}/app">Open account</a>
+            <a class="link-action" href="/pricing"><span>See pricing</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderDashboardPage(): string {
+  const favicon = logoFaviconDataUrl();
+
   return html(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
-  <title>Laryn Account</title>
+  <link rel="icon" type="image/svg+xml" href="${favicon}" />
+  <title>Account · Laryn</title>
   <style>${sharedCss()}${dashboardCss()}</style>
 </head>
 <body class="dashboard">
-  <main class="app-shell">
-    <aside class="sidebar">
+  <header class="dash-topbar">
+    <div class="dash-topbar-inner">
       <a class="brand" href="/" aria-label="Homepage"><span class="brand-mark"></span>Laryn</a>
-      <nav>
+      <nav class="dash-topnav" aria-label="Primary">
         <a href="/app" data-active="true">Account</a>
         <a href="/pricing">Pricing</a>
         <a href="/download">Download</a>
       </nav>
-      <div class="sidebar-foot">
-        <small>© ${new Date().getFullYear()} Laryn</small>
+      <div id="dash-topbar-user" class="dash-topbar-user">
+        <button id="sign-in" class="btn btn-primary btn-sm">Sign in with Google</button>
       </div>
-    </aside>
+    </div>
+  </header>
 
-    <section class="content">
-      <header class="content-head">
+  <main class="dash-main">
+    <div class="dash-shell">
+      <header class="dash-page-head">
         <div>
-          <p class="eyebrow">Account</p>
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Account</p>
           <h1>Dashboard</h1>
+          <p id="dash-subtitle" class="dash-subtitle">Manage your Laryn Pro plan, paired devices, and usage.</p>
         </div>
-        <button id="sign-in" class="btn btn-primary">Sign in with Google</button>
       </header>
 
       <div id="device-approval" class="approval-slot"></div>
-      <div id="content" class="cards"></div>
-    </section>
+      <div id="content" class="dash-content"></div>
+    </div>
   </main>
 
   <script>
@@ -1657,25 +2100,6 @@ function renderDashboardPage(): string {
     const revokingDevices = new Set();
     const content = document.querySelector("#content");
     const approval = document.querySelector("#device-approval");
-    const signIn = document.querySelector("#sign-in");
-
-    signIn.addEventListener("click", async () => {
-      if (signIn.disabled) return;
-      signIn.disabled = true;
-      signIn.textContent = "Opening Google...";
-      try {
-      const data = await json("/api/auth/sign-in/social", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ provider: "google", callbackURL: pendingCode ? "/app?device_code=" + encodeURIComponent(pendingCode) : "/app" })
-      });
-      if (data.url) location.href = data.url;
-      } catch (error) {
-        signIn.disabled = false;
-        signIn.textContent = "Sign in with Google";
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-      }
-    });
 
     async function json(url, options) {
       const response = await fetch(url, { credentials: "include", ...options });
@@ -1690,30 +2114,112 @@ function renderDashboardPage(): string {
       return data;
     }
 
+    const userSlot = document.querySelector("#dash-topbar-user");
+    const subtitle = document.querySelector("#dash-subtitle");
+
+    function setSignedOutTopbar() {
+      userSlot.innerHTML = '<button id="sign-in" class="btn btn-primary btn-sm">Sign in with Google</button>';
+      const button = userSlot.querySelector("#sign-in");
+      button.addEventListener("click", handleSignIn);
+    }
+
+    function setSignedInTopbar(account) {
+      const email = account && account.user ? account.user.email || "" : "";
+      const name = account && account.user ? account.user.name || "" : "";
+      const initial = (name || email || "L").trim().charAt(0).toUpperCase();
+      userSlot.innerHTML =
+        '<div class="user-pill">'
+          + '<span class="user-avatar" aria-hidden="true">' + escapeHtml(initial) + '</span>'
+          + '<div class="user-pill-text"><strong>' + escapeHtml(name || email.split("@")[0] || "Signed in") + '</strong>'
+          + (email ? '<small>' + escapeHtml(email) + '</small>' : '')
+          + '</div>'
+        + '</div>'
+        + '<button id="sign-out" class="btn btn-ghost btn-sm">Sign out</button>';
+      const signOutButton = userSlot.querySelector("#sign-out");
+      signOutButton.addEventListener("click", handleSignOut);
+    }
+
+    async function handleSignIn() {
+      const button = userSlot.querySelector("#sign-in");
+      if (!button || button.disabled) return;
+      button.disabled = true;
+      button.textContent = "Opening Google...";
+      try {
+        const data = await json("/api/auth/sign-in/social", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ provider: "google", callbackURL: pendingCode ? "/app?device_code=" + encodeURIComponent(pendingCode) : "/app" })
+        });
+        if (data.url) location.href = data.url;
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Sign in with Google";
+        approval.innerHTML = warnApproval("Sign in failed", error.message);
+      }
+    }
+
+    async function handleSignOut() {
+      try {
+        await json("/api/auth/sign-out", { method: "POST" });
+      } catch (error) {
+        // ignore — we'll still reset UI below
+      }
+      currentAccount = null;
+      setSignedOutTopbar();
+      subtitle.textContent = "Manage your Laryn Pro plan, paired devices, and usage.";
+      content.innerHTML = signedOutHero();
+      const button = content.querySelector("#hero-sign-in");
+      if (button) button.addEventListener("click", handleSignIn);
+    }
+
+    setSignedOutTopbar();
+
     async function load() {
       if (loadingAccount) return;
       loadingAccount = true;
       try {
         const account = await json("/api/account/me");
         currentAccount = account;
-        signIn.textContent = "Signed in";
-        signIn.disabled = true;
+        setSignedInTopbar(account);
         if (pendingCode) {
-          approval.innerHTML = '<div class="approval-card"><div class="approval-text"><strong>Pair desktop device</strong><p>Approve code <code>' + escapeHtml(pendingCode) + '</code> for this account.</p></div><button id="approve-device" class="btn btn-primary">Approve device</button></div>';
+          approval.innerHTML =
+            '<div class="approval-card"><div class="approval-text"><strong>Pair desktop device</strong><p>Approve code <code>' + escapeHtml(pendingCode) + '</code> for this account.</p></div><button id="approve-device" class="btn btn-primary btn-sm">Approve device</button></div>';
           document.querySelector("#approve-device").addEventListener("click", approveDevice);
         }
+        subtitle.textContent = "Welcome back" + (account.user && account.user.name ? ", " + account.user.name.split(" ")[0] : "") + ".";
         render(account);
       } catch (error) {
         currentAccount = null;
-        signIn.textContent = "Sign in with Google";
-        signIn.disabled = false;
+        setSignedOutTopbar();
         approval.innerHTML = pendingCode
           ? '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in to pair this device</strong><p>After signing in, approve code <code>' + escapeHtml(pendingCode) + '</code>.</p></div></div>'
           : "";
-        content.innerHTML = '<article class="card card-wide"><span class="card-eyebrow">Sign in required</span><h2>Connect your account</h2><p>Use Google to manage your Laryn Pro subscription and approve desktop devices.</p></article>';
+        subtitle.textContent = "Sign in to manage your plan, devices, and usage.";
+        content.innerHTML = signedOutHero();
+        const button = content.querySelector("#hero-sign-in");
+        if (button) button.addEventListener("click", handleSignIn);
       } finally {
         loadingAccount = false;
       }
+    }
+
+    function signedOutHero() {
+      return '<section class="dash-hero dash-hero-empty">'
+        + '<div class="dash-hero-glyph" aria-hidden="true"><span class="dash-hero-mic"></span></div>'
+        + '<div class="dash-hero-copy">'
+          + '<p class="eyebrow"><span class="eyebrow-dot"></span>Sign in required</p>'
+          + '<h2>Connect your Google account.</h2>'
+          + '<p>Sign in to start your Pro subscription, approve desktops, and watch your monthly usage.</p>'
+        + '</div>'
+        + '<div class="dash-hero-actions">'
+          + '<button id="hero-sign-in" class="btn btn-primary btn-lg">Sign in with Google</button>'
+          + '<a class="link-action" href="/download"><span>Download Laryn for Windows</span></a>'
+        + '</div>'
+      + '</section>';
+    }
+
+    function warnApproval(title, message) {
+      return '<div class="approval-card approval-warn"><div class="approval-text"><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(message || "") + '</p></div></div>';
     }
 
     async function approveDevice() {
@@ -1800,71 +2306,122 @@ function renderDashboardPage(): string {
       const credits = billing.usageCredits || { includedCents: 300 };
       const proActive = Boolean(billing.proActive);
       const creditPercent = creditUsagePercent(credits);
-      const usedCredit = dollars(credits.consumedCents || 0);
-      const includedCredit = dollars(credits.includedCents || 300);
-      const creditLine = typeof credits.remainingCents === "number"
-        ? usedCredit + " used of " + includedCredit
-        : typeof credits.overageCents === "number"
-          ? usedCredit + " used · " + dollars(credits.overageCents) + " over"
-          : "$0.00 used of " + includedCredit;
-      const creditCaption = typeof credits.overageCents === "number" && credits.overageCents > 0
-        ? includedCredit + " included monthly · overage is billed by Polar"
-        : typeof credits.remainingCents === "number"
-          ? dollars(credits.remainingCents) + " remaining · " + Math.round(creditPercent) + "% used"
-          : "Balance appears after Polar reports meter usage.";
+      const usedCents = credits.consumedCents || 0;
+      const includedCents = credits.includedCents || 300;
+      const usedCredit = dollars(usedCents);
+      const includedCredit = dollars(includedCents);
+      const remaining = typeof credits.remainingCents === "number" ? credits.remainingCents : Math.max(0, includedCents - usedCents);
+      const overage = typeof credits.overageCents === "number" ? credits.overageCents : 0;
+      const usedPct = Math.min(100, Math.max(0, creditPercent));
+      const minutes = Math.round((usage.audioDurationMs || 0) / 60000);
+      const transcriptions = usage.transcriptionCount || 0;
+      const planLabel = proActive ? "Laryn Pro" : "No active plan";
+      const planSubtitle = proActive
+        ? "$5 / month · " + escapeHtml(billing.subscriptionStatus || "active")
+        : "Start Pro to unlock dictation across your paired desktops.";
+      const heroBadge = proActive
+        ? '<span class="badge badge-good"><span class="badge-dot"></span>Pro active</span>'
+        : '<span class="badge badge-warn"><span class="badge-dot"></span>Subscription required</span>';
+      const heroPrimary = proActive
+        ? '<button id="portal" class="btn btn-primary btn-sm">Billing portal</button>'
+        : '<button id="checkout" class="btn btn-primary btn-sm">Get Pro · $5/mo</button>';
+      const heroSecondary = proActive
+        ? '<button id="checkout" class="btn btn-secondary btn-sm">Manage plan</button>'
+        : '<button id="portal" class="btn btn-secondary btn-sm">Billing portal</button>';
 
-      const statusBadge = proActive
-        ? '<span class="badge badge-good">Pro active</span>'
-        : '<span class="badge badge-warn">Subscription required</span>';
+      const overageNote = overage > 0
+        ? '<div class="usage-overage"><span class="badge badge-warn"><span class="badge-dot"></span>Over credit</span><strong>' + escapeHtml(dollars(overage)) + '</strong><small>billed through Polar this cycle</small></div>'
+        : '';
 
-      content.innerHTML =
-        '<article class="card">'
-          + '<span class="card-eyebrow">Status</span>'
-          + '<h2>' + (proActive ? "Laryn Pro active" : "Subscription required") + '</h2>'
-          + '<p>$5/month plan · ' + escapeHtml(billing.subscriptionStatus || "unknown") + '</p>'
-          + '<div class="card-actions">'
-            + '<button id="checkout" class="btn btn-primary">' + (proActive ? "Manage plan" : "Get Pro") + '</button>'
-            + '<button id="portal" class="btn btn-secondary">Billing portal</button>'
-            + '<button id="reconcile-billing" class="btn btn-ghost">Sync Polar</button>'
+      const usageHero =
+        '<section class="dash-hero">'
+          + '<div class="dash-hero-meta">'
+            + heroBadge
+            + '<span class="dash-hero-plan">' + escapeHtml(planLabel) + '</span>'
           + '</div>'
-        + '</article>'
-        + '<article class="card">'
-          + '<span class="card-eyebrow">Signed in as</span>'
-          + '<h2 class="truncate">' + escapeHtml(account.user.email) + '</h2>'
-          + '<p>' + escapeHtml(account.user.name || "") + '</p>'
-        + '</article>'
-        + '<article class="card">'
-          + '<span class="card-eyebrow">Usage credit</span>'
-          + '<h2 class="num">' + escapeHtml(creditLine) + '</h2>'
-          + '<div class="usage-bar"><span style="width:' + Math.min(100, Math.max(0, creditPercent)) + '%"></span></div>'
-          + '<p>' + escapeHtml(creditCaption) + '</p>'
-        + '</article>'
-        + '<article class="card">'
-          + '<span class="card-eyebrow">Activity</span>'
-          + '<h2 class="num">' + usage.transcriptionCount + ' transcriptions</h2>'
-          + '<p>' + Math.round(usage.audioDurationMs / 60000) + ' recorded minutes</p>'
-        + '</article>'
-        + '<article class="card card-wide">'
-          + '<div class="card-head">'
-            + '<div><span class="card-eyebrow">Devices</span><h2>' + devices.length + ' active</h2></div>'
-            + statusBadge
+          + '<h2 class="dash-hero-title">' + (proActive ? "You're set. Dictate from any paired desktop." : "One step from dictating into anything.") + '</h2>'
+          + '<p class="dash-hero-sub">' + planSubtitle + '</p>'
+          + '<div class="dash-hero-actions">'
+            + heroPrimary
+            + heroSecondary
+            + '<button id="reconcile-billing" class="btn btn-ghost btn-sm">Sync from Polar</button>'
           + '</div>'
+        + '</section>';
+
+      const usageCard =
+        '<article class="dash-card dash-card-usage">'
+          + '<header class="dash-card-head">'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Usage credit</p><h3 class="dash-card-title">This billing cycle</h3></div>'
+            + '<span class="dash-card-pill">' + escapeHtml(includedCredit) + ' included</span>'
+          + '</header>'
+          + '<div class="usage-meter">'
+            + '<div class="usage-meter-row"><strong class="num">' + escapeHtml(usedCredit) + '</strong><span class="muted">of ' + escapeHtml(includedCredit) + '</span></div>'
+            + '<div class="usage-bar"><span style="width:' + usedPct + '%" class="' + (overage > 0 ? "is-over" : "") + '"></span></div>'
+            + '<div class="usage-meter-row usage-meter-row-foot">'
+              + '<small>' + escapeHtml(dollars(remaining)) + ' remaining</small>'
+              + '<small>' + Math.round(usedPct) + '% used</small>'
+            + '</div>'
+          + '</div>'
+          + overageNote
+        + '</article>';
+
+      const activityCard =
+        '<article class="dash-card dash-card-stats">'
+          + '<header class="dash-card-head">'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Activity</p><h3 class="dash-card-title">All-time totals</h3></div>'
+          + '</header>'
+          + '<dl class="stat-grid">'
+            + '<div class="stat-item"><dt>Transcriptions</dt><dd class="num">' + transcriptions + '</dd></div>'
+            + '<div class="stat-item"><dt>Audio minutes</dt><dd class="num">' + minutes + '</dd></div>'
+            + '<div class="stat-item"><dt>Devices</dt><dd class="num">' + devices.length + '</dd></div>'
+          + '</dl>'
+        + '</article>';
+
+      const accountCard =
+        '<article class="dash-card dash-card-account">'
+          + '<header class="dash-card-head">'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Signed in</p><h3 class="dash-card-title truncate">' + escapeHtml(account.user.name || account.user.email || "") + '</h3></div>'
+          + '</header>'
+          + '<dl class="kv-list">'
+            + '<div class="kv-row"><dt>Email</dt><dd class="truncate">' + escapeHtml(account.user.email || "—") + '</dd></div>'
+            + '<div class="kv-row"><dt>Plan</dt><dd>' + escapeHtml(billing.subscriptionStatus || (proActive ? "active" : "none")) + '</dd></div>'
+            + '<div class="kv-row"><dt>Credit</dt><dd>' + escapeHtml(includedCredit) + ' / month</dd></div>'
+          + '</dl>'
+        + '</article>';
+
+      const devicesCard =
+        '<article class="dash-card dash-card-devices">'
+          + '<header class="dash-card-head">'
+            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Paired desktops</p><h3 class="dash-card-title">' + devices.length + ' active</h3></div>'
+            + '<a class="link-action" href="/download">Pair another</a>'
+          + '</header>'
           + (devices.length === 0
-              ? '<p class="muted">No devices paired yet. Open the desktop app and start device login from Settings.</p>'
-              : '<div class="device-list">' + devices.map(device => (
-                  '<div class="device-row">'
+              ? '<div class="empty-state">'
+                  + '<p>No devices paired yet.</p>'
+                  + '<p class="muted">Open the desktop app, head to Settings, and start device login. Approve the displayed code here.</p>'
+                + '</div>'
+              : '<ul class="device-list" role="list">' + devices.map(device => (
+                  '<li class="device-row">'
+                    + '<div class="device-icon" aria-hidden="true">'
+                      + '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M2.5 4.25c0-.97.78-1.75 1.75-1.75h7.5c.97 0 1.75.78 1.75 1.75v5.5c0 .97-.78 1.75-1.75 1.75h-7.5A1.75 1.75 0 0 1 2.5 9.75v-5.5Zm1.75-.25a.25.25 0 0 0-.25.25v5.5c0 .14.11.25.25.25h7.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-7.5Zm-.5 9.5a.75.75 0 0 1 .75-.75h7c.41 0 .75.34.75.75s-.34.75-.75.75h-7a.75.75 0 0 1-.75-.75Z"/></svg>'
+                    + '</div>'
                     + '<div class="device-text">'
-                      + '<strong>' + escapeHtml(device.deviceName) + '</strong>'
+                      + '<strong class="truncate">' + escapeHtml(device.deviceName) + '</strong>'
                       + '<small>' + escapeHtml(device.lastSeenAt ? "Last seen " + formatDate(device.lastSeenAt) : "Paired " + formatDate(device.createdAt)) + '</small>'
                     + '</div>'
                     + '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm"' + (revokingDevices.has(device.id) ? " disabled" : "") + '>' + (revokingDevices.has(device.id) ? "Revoking..." : "Revoke") + '</button>'
-                  + '</div>'
-                )).join("") + '</div>')
+                  + '</li>'
+                )).join("") + '</ul>')
         + '</article>';
 
-      document.querySelector("#checkout").addEventListener("click", checkout);
-      document.querySelector("#portal").addEventListener("click", portal);
-      document.querySelector("#reconcile-billing").addEventListener("click", reconcileBilling);
+      content.innerHTML = usageHero + '<div class="dash-grid">' + usageCard + activityCard + accountCard + devicesCard + '</div>';
+
+      const checkoutBtn = document.querySelector("#checkout");
+      const portalBtn = document.querySelector("#portal");
+      const reconcileBtn = document.querySelector("#reconcile-billing");
+      if (checkoutBtn) checkoutBtn.addEventListener("click", checkout);
+      if (portalBtn) portalBtn.addEventListener("click", portal);
+      if (reconcileBtn) reconcileBtn.addEventListener("click", reconcileBilling);
       document.querySelectorAll("[data-revoke]").forEach(button => button.addEventListener("click", () => revoke(button.dataset.revoke)));
     }
 
@@ -1891,296 +2448,458 @@ function renderDashboardPage(): string {
 </html>`);
 }
 
+function logoFaviconDataUrl(): string {
+  return "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 119'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='3.2' x2='117.1' y1='59.8' y2='59.8' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%23050B17'/%3E%3Cstop offset='1' stop-color='%23090F1B'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='26' x2='101' y1='56.35' y2='56.35' gradientUnits='userSpaceOnUse'%3E%3Cstop offset='0' stop-color='%231E64F0'/%3E%3Cstop offset='.5' stop-color='%232553E8'/%3E%3Cstop offset='1' stop-color='%231CB2F7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath fill='url(%23a)' stroke='%233C4254' stroke-width='.8' d='M92.7 3.8H27.6C14.1 3.8 3.2 14.3 3.2 28.4v64.1c0 14.1 10.9 25.5 24.4 25.5h65.1c13.3 0 24.3-10.5 24.3-24.6v-65c0-14.1-10.9-24.6-24.3-24.6Z'/%3E%3Cpath fill='url(%23b)' d='M59.6 64.2c-1.7 0-3.6 1.3-3.6 3.1v9.3c0 1.8-1.6 3.3-3.3 3.3h-9.4c-5.1 0-10.3-3.8-10.3-9.6V34.1c0-1.8 1.5-3.2 3.8-3.2s4.3 1.5 4.3 3.7v35.5c0 1.4 1.5 3 3.3 3 1.8.1 3.5-1.2 3.5-3V34.6c0-5-4.3-10-9.8-10H36c-4.4 0-10 3.8-10 9.3v36.5c0 7.2 5.9 16.7 16.7 16.8h10.8c4.4 0 9-3.3 9.1-9.8V67.1c0-1.7-1.4-2.9-3-2.9Zm12.9-6.2c-1.7 0-3.4 1.4-3.4 3.1v33c0 1.6 1.5 2.9 3.2 2.9 1.8 0 3.4-1.1 3.4-3V61.1c0-1.7-1.5-3.2-3.2-3.1Zm12.6 9.9c-1.6.2-3.5 1.6-3.5 3.3v14.7c0 1.8 1.5 3.8 3.5 3.6 1.8 0 3.5-1.4 3.5-3.3v-15c0-1.8-1.5-3.3-3.5-3.3Zm12.1 6.7c-1.5 0-3.6 1.4-3.6 3.3 0 1.8 1.6 3.6 3.5 3.6 1.8 0 3.7-1.2 3.8-3.3s-1.7-3.8-3.7-3.6Z'/%3E%3C/svg%3E";
+}
+
 function sharedCss(): string {
   return `
+@import url("https://rsms.me/inter/inter.css");
 :root{
-  --bg:#06090f;
-  --bg-soft:#0a1018;
-  --surface:#0e1622;
-  --surface-soft:#131c2a;
+  --bg:#04070d;
+  --bg-soft:#070b14;
+  --surface:#0d1622;
+  --surface-soft:#111c2c;
+  --surface-hi:#16223a;
   --line:rgba(255,255,255,0.06);
-  --line-strong:rgba(255,255,255,0.1);
-  --text:#e7ecf3;
-  --text-soft:#a6b1c2;
-  --text-mute:#6f7c92;
+  --line-strong:rgba(255,255,255,0.10);
+  --line-bright:rgba(255,255,255,0.16);
+  --text:#eef2f8;
+  --text-soft:#aab4c4;
+  --text-mute:#6e7a90;
   --brand:#4f8fff;
   --brand-strong:#2f6fff;
+  --brand-deep:#1e4ed8;
   --brand-soft:rgba(79,143,255,0.14);
+  --accent:#22d3ee;
+  --accent-violet:#a78bfa;
   --good:#34d399;
   --warn:#f5b057;
   --bad:#ff6173;
+  --radius-xs:6px;
+  --radius-sm:8px;
+  --radius:10px;
+  --radius-md:12px;
+  --radius-lg:16px;
+  --radius-xl:22px;
+  --shadow-card:0 1px 0 rgba(255,255,255,.02), 0 14px 40px -16px rgba(0,0,0,.5);
+  --shadow-pop:0 18px 60px -18px rgba(0,0,0,.7), 0 0 0 1px var(--line);
   color-scheme:dark;
-  font-family:Inter,InterVariable,ui-sans-serif,system-ui,"Segoe UI",sans-serif;
-  font-feature-settings:"cv02","cv03","cv04","cv11";
+  font-family:"InterVariable",Inter,ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+  font-feature-settings:"cv02","cv03","cv04","cv11","ss01","ss03";
 }
 *{box-sizing:border-box}
 *,*::before,*::after{margin:0;padding:0}
-html,body{background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-body{font-size:15px;line-height:1.5}
+html,body{background:var(--bg);color:var(--text);min-height:100dvh;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-size:16px;line-height:1.55;overflow-x:hidden}
 a{color:inherit;text-decoration:none}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
-::selection{background:var(--brand-soft);color:var(--text)}
-kbd{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.78em;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line-strong);color:var(--text)}
-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.92em;padding:1px 5px;border-radius:5px;background:rgba(255,255,255,.05);color:var(--text)}
-.eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--brand);margin:0}
+::selection{background:rgba(79,143,255,.32);color:#fff}
+
+kbd{font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace;font-size:.78em;font-weight:600;padding:3px 7px;border-radius:6px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line-strong),inset 0 -1px 0 0 rgba(0,0,0,.32);color:var(--text);letter-spacing:.02em}
+code{font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace;font-size:.92em;padding:1px 5px;border-radius:5px;background:rgba(255,255,255,.05);color:var(--text)}
+
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-soft)}
+.eyebrow-dot{width:6px;height:6px;border-radius:999px;background:var(--brand);box-shadow:0 0 14px rgba(79,143,255,.7);flex:0 0 auto}
+
 .dot{width:7px;height:7px;border-radius:999px;background:var(--text-mute);display:inline-block;flex:0 0 auto}
 .dot-good{background:var(--good);box-shadow:0 0 12px rgba(52,211,153,.5)}
 .dot-warn{background:var(--warn)}
 .dot-bad{background:var(--bad)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:9px;font-size:14px;font-weight:600;letter-spacing:-0.005em;transition:background-color 120ms ease,color 120ms ease;white-space:nowrap}
-.btn-lg{height:48px;padding:0 22px;font-size:15px}
-.btn-sm{height:32px;padding:0 12px;font-size:13px}
-.btn-primary{background:var(--brand-strong);color:#fff;box-shadow:inset 0 1px 0 0 rgba(255,255,255,.18),inset 0 0 0 1px rgba(255,255,255,.06)}
-.btn-primary:hover{background:var(--brand)}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius);font-size:14px;font-weight:600;letter-spacing:-0.005em;transition:background-color 120ms ease,color 120ms ease,box-shadow 120ms ease,transform 120ms ease;white-space:nowrap;position:relative}
+.btn-lg{height:48px;padding:0 22px;font-size:15px;border-radius:var(--radius-md)}
+.btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:var(--radius-sm)}
+.btn-block{width:100%}
+.btn-primary{background:linear-gradient(180deg,var(--brand) 0%,var(--brand-strong) 60%,var(--brand-deep) 100%);color:#fff;box-shadow:inset 0 1px 0 0 rgba(255,255,255,.22),inset 0 0 0 1px rgba(255,255,255,.06),0 6px 20px -6px rgba(47,111,255,.55)}
+.btn-primary:hover{filter:brightness(1.06)}
+.btn-primary:active{transform:translateY(1px)}
 .btn-secondary{background:rgba(255,255,255,.04);color:var(--text);box-shadow:inset 0 0 0 1px var(--line-strong)}
-.btn-secondary:hover{background:rgba(255,255,255,.07)}
+.btn-secondary:hover{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px var(--line-bright)}
 .btn-ghost{background:transparent;color:var(--text-soft)}
-.btn-ghost:hover{background:rgba(255,255,255,.05);color:var(--text)}
-.btn-ghost-light{background:transparent;color:var(--text);font-weight:600}
-.btn-ghost-light:hover{color:var(--brand)}
-.btn:disabled{opacity:.55;cursor:not-allowed}
-.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-0.01em;color:var(--text)}
-.brand-mark{display:inline-block;width:14px;height:24px;border-radius:999px;background:linear-gradient(180deg,#6ca6ff,#2f6fff);box-shadow:0 0 18px rgba(79,143,255,.5)}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-.badge-good{background:rgba(52,211,153,.14);color:var(--good)}
-.badge-warn{background:rgba(245,176,87,.14);color:var(--warn)}
+.btn-ghost:hover{background:rgba(255,255,255,.04);color:var(--text)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+.link-action{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;color:var(--text);transition:color 120ms ease}
+.link-action svg{transition:transform 160ms ease}
+.link-action:hover{color:var(--brand)}
+.link-action:hover svg{transform:translateX(2px)}
+
+.brand{display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-0.012em;color:var(--text)}
+.brand-mark{display:inline-block;width:22px;height:22px;background:linear-gradient(135deg,#1e64f0,#2553e8 50%,#22d3ee 100%);filter:drop-shadow(0 0 14px rgba(79,143,255,.55));-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='24 24 78 74'%3E%3Cpath d='M59.6 64.2c-1.7 0-3.6 1.3-3.6 3.1v9.3c0 1.8-1.6 3.3-3.3 3.3h-9.4c-5.1 0-10.3-3.8-10.3-9.6V34.1c0-1.8 1.5-3.2 3.8-3.2s4.3 1.5 4.3 3.7v35.5c0 1.4 1.5 3 3.3 3 1.8.1 3.5-1.2 3.5-3V34.6c0-5-4.3-10-9.8-10H36c-4.4 0-10 3.8-10 9.3v36.5c0 7.2 5.9 16.7 16.7 16.8h10.8c4.4 0 9-3.3 9.1-9.8V67.1c0-1.7-1.4-2.9-3-2.9Zm12.9-6.2c-1.7 0-3.4 1.4-3.4 3.1v33c0 1.6 1.5 2.9 3.2 2.9 1.8 0 3.4-1.1 3.4-3V61.1c0-1.7-1.5-3.2-3.2-3.1Zm12.6 9.9c-1.6.2-3.5 1.6-3.5 3.3v14.7c0 1.8 1.5 3.8 3.5 3.6 1.8 0 3.5-1.4 3.5-3.3v-15c0-1.8-1.5-3.3-3.5-3.3Zm12.1 6.7c-1.5 0-3.6 1.4-3.6 3.3 0 1.8 1.6 3.6 3.5 3.6 1.8 0 3.7-1.2 3.8-3.3s-1.7-3.8-3.7-3.6Z'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='24 24 78 74'%3E%3Cpath d='M59.6 64.2c-1.7 0-3.6 1.3-3.6 3.1v9.3c0 1.8-1.6 3.3-3.3 3.3h-9.4c-5.1 0-10.3-3.8-10.3-9.6V34.1c0-1.8 1.5-3.2 3.8-3.2s4.3 1.5 4.3 3.7v35.5c0 1.4 1.5 3 3.3 3 1.8.1 3.5-1.2 3.5-3V34.6c0-5-4.3-10-9.8-10H36c-4.4 0-10 3.8-10 9.3v36.5c0 7.2 5.9 16.7 16.7 16.8h10.8c4.4 0 9-3.3 9.1-9.8V67.1c0-1.7-1.4-2.9-3-2.9Zm12.9-6.2c-1.7 0-3.4 1.4-3.4 3.1v33c0 1.6 1.5 2.9 3.2 2.9 1.8 0 3.4-1.1 3.4-3V61.1c0-1.7-1.5-3.2-3.2-3.1Zm12.6 9.9c-1.6.2-3.5 1.6-3.5 3.3v14.7c0 1.8 1.5 3.8 3.5 3.6 1.8 0 3.5-1.4 3.5-3.3v-15c0-1.8-1.5-3.3-3.5-3.3Zm12.1 6.7c-1.5 0-3.6 1.4-3.6 3.3 0 1.8 1.6 3.6 3.5 3.6 1.8 0 3.7-1.2 3.8-3.3s-1.7-3.8-3.7-3.6Z'/%3E%3C/svg%3E") center/contain no-repeat}
+
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.badge-dot{width:6px;height:6px;border-radius:999px;background:currentColor;box-shadow:0 0 10px currentColor}
+.badge-good{background:rgba(52,211,153,.12);color:var(--good);box-shadow:inset 0 0 0 1px rgba(52,211,153,.24)}
+.badge-warn{background:rgba(245,176,87,.12);color:var(--warn);box-shadow:inset 0 0 0 1px rgba(245,176,87,.24)}
+.badge-brand{background:rgba(79,143,255,.16);color:#cdd9ff;box-shadow:inset 0 0 0 1px rgba(79,143,255,.34)}
 .badge-mute{background:rgba(255,255,255,.06);color:var(--text-mute)}
-.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
 .muted{color:var(--text-mute)}
 .num{font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace}
+
+.page-shell{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4.5vw,56px);width:100%}
+
+.section{padding:96px 0;position:relative}
+.section-head{display:grid;gap:14px;margin-bottom:48px;max-width:780px}
+.section-head h2{font-size:clamp(28px,3.6vw,44px);font-weight:600;letter-spacing:-0.022em;color:var(--text);max-width:24ch}
+.section-head .section-lede{font-size:17px;line-height:1.55;color:var(--text-soft);max-width:62ch}
+.section-head-row{display:flex;align-items:flex-end;justify-content:space-between;gap:32px;flex-wrap:wrap;max-width:none;margin-bottom:48px}
+.section-head-row > div:first-child{display:grid;gap:14px;max-width:780px}
+
+@media(max-width:760px){
+  .section{padding:72px 0}
+  .section-head{margin-bottom:36px}
+}
 `;
 }
 
 function marketingCss(): string {
   return `
-.marketing{
-  background:radial-gradient(1100px 600px at 12% -10%,rgba(79,143,255,0.18),transparent 60%),
-    radial-gradient(900px 500px at 88% 6%,rgba(34,211,238,0.10),transparent 55%),
-    var(--bg);
-  min-height:100vh;
-  isolation:isolate;
-}
-.site-header{
-  position:sticky;top:0;z-index:10;
-  display:flex;align-items:center;justify-content:space-between;
-  height:64px;padding:0 clamp(20px,5vw,56px);
-  background:rgba(6,9,15,0.72);
-  backdrop-filter:blur(14px) saturate(1.1);
-  -webkit-backdrop-filter:blur(14px) saturate(1.1);
-  border-bottom:1px solid var(--line);
-}
-.site-header nav{display:flex;align-items:center;gap:6px}
-.site-header nav a{padding:8px 12px;border-radius:8px;color:var(--text-soft);font-size:14px;font-weight:500;transition:color 120ms ease,background-color 120ms ease}
-.site-header nav a:hover{color:var(--text)}
-.site-header nav a[data-active="true"]{color:var(--text);background:rgba(255,255,255,0.04)}
-.site-header nav a.btn{padding:0 14px;height:36px;color:var(--text)}
-main{padding-bottom:96px}
-.hero{
-  display:grid;grid-template-columns:minmax(0,1.05fr) minmax(380px,.95fr);
-  gap:64px;align-items:center;
-  padding:96px clamp(20px,5vw,56px) 80px;
-  max-width:1240px;margin:0 auto;
-}
-.hero-copy{display:grid;gap:24px;max-width:620px}
-.hero h1{
-  font-size:clamp(40px,6.4vw,76px);
-  line-height:1.02;
-  letter-spacing:-0.025em;
-  font-weight:600;
-  color:var(--text);
-  text-wrap:balance;
-}
-.lede{
-  font-size:18px;line-height:1.55;color:var(--text-soft);
-  text-wrap:pretty;max-width:54ch;
-}
-.hero-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.hero-points{display:grid;gap:8px;margin-top:8px}
-.hero-points li{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text-soft);list-style:none}
-.hero-points kbd{font-size:12px}
-.hero-mock{
-  position:relative;
-  border-radius:18px;
-  padding:18px;
-  background:linear-gradient(180deg,rgba(20,30,49,0.85),rgba(8,14,25,0.9));
-  box-shadow:inset 0 0 0 1px var(--line-strong),inset 0 1px 0 0 rgba(255,255,255,0.06),0 30px 80px rgba(0,0,0,0.55);
-  display:grid;gap:14px;
-}
-.mock-bar{
-  display:flex;align-items:center;justify-content:space-between;
-  height:32px;padding:0 12px;
-  border-radius:10px;background:rgba(255,255,255,0.03);
-  box-shadow:inset 0 0 0 1px var(--line);
-  color:var(--text-mute);font-size:11px;letter-spacing:.04em;
-}
+.marketing{background:var(--bg);min-height:100dvh;isolation:isolate}
+
+/* ---------- Header ---------- */
+.site-header{position:sticky;top:0;z-index:10;background:rgba(4,7,13,0.72);backdrop-filter:blur(16px) saturate(1.1);-webkit-backdrop-filter:blur(16px) saturate(1.1);border-bottom:1px solid var(--line)}
+.site-header-inner{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4.5vw,56px);display:flex;align-items:center;justify-content:space-between;gap:24px;height:68px}
+.site-nav{display:flex;align-items:center;gap:4px}
+.site-nav a{padding:8px 14px;border-radius:8px;color:var(--text-soft);font-size:14px;font-weight:500;transition:color 120ms ease,background-color 120ms ease}
+.site-nav a:hover{color:var(--text)}
+.site-nav a[data-active="true"]{color:var(--text);background:rgba(255,255,255,.04)}
+.site-header-actions{display:flex;align-items:center;gap:14px}
+.site-header-link{font-size:14px;font-weight:500;color:var(--text-soft)}
+.site-header-link:hover{color:var(--text)}
+
+/* ---------- Hero ---------- */
+.hero{position:relative;padding:96px 0 80px;overflow:hidden}
+.hero-compact{padding:80px 0 56px}
+.hero-bg{position:absolute;inset:0;z-index:-1;pointer-events:none;background:
+  radial-gradient(1100px 600px at 14% -10%,rgba(79,143,255,0.20),transparent 60%),
+  radial-gradient(900px 500px at 88% 8%,rgba(34,211,238,0.12),transparent 55%),
+  radial-gradient(600px 320px at 60% 110%,rgba(167,139,250,0.10),transparent 60%)}
+.hero-bg::after{content:"";position:absolute;inset:0;background-image:
+  linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),
+  linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:48px 48px;mask-image:radial-gradient(ellipse 60% 60% at 50% 30%,#000 50%,transparent 100%);
+  -webkit-mask-image:radial-gradient(ellipse 60% 60% at 50% 30%,#000 50%,transparent 100%);opacity:.6}
+.hero-shell{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(380px,.95fr);gap:64px;align-items:center}
+.hero-shell-centered{display:grid;justify-items:center;text-align:center;gap:18px}
+.hero-shell-centered h1{max-width:20ch}
+.hero-shell-centered .lede{max-width:62ch}
+.hero-copy{display:grid;gap:22px;max-width:620px}
+.hero h1{font-size:clamp(44px,6.6vw,80px);line-height:1.02;letter-spacing:-0.028em;font-weight:600;color:var(--text);text-wrap:balance;max-width:18ch}
+.hero-accent{background:linear-gradient(135deg,#6aa5ff 0%,#22d3ee 60%,#a78bfa 100%);-webkit-background-clip:text;background-clip:text;color:transparent;display:inline-block}
+.lede{font-size:18px;line-height:1.55;color:var(--text-soft);text-wrap:pretty;max-width:60ch}
+.hero-actions{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.hero-actions-centered{justify-content:center}
+.hero-meta{display:flex;flex-wrap:wrap;gap:14px 22px;margin-top:6px;list-style:none}
+.hero-meta li{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-soft)}
+.hero-meta-dot{width:7px;height:7px;border-radius:999px;background:var(--text-mute);flex:0 0 auto}
+.dot-good.hero-meta-dot,.hero-meta-dot.dot-good{background:var(--good);box-shadow:0 0 12px rgba(52,211,153,.5)}
+.download-meta{margin-top:18px;color:var(--text-mute);font-size:13px}
+
+/* ---------- Hero mock ---------- */
+.hero-mock{position:relative;display:grid;align-items:center;justify-items:end}
+.mock-frame{position:relative;width:100%;max-width:560px;border-radius:var(--radius-xl);padding:18px;background:linear-gradient(180deg,rgba(22,34,58,.85) 0%,rgba(13,22,34,.92) 100%);box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 1px 0 rgba(255,255,255,.06),0 36px 80px -24px rgba(0,0,0,.7);display:grid;gap:14px;z-index:1}
+.mock-glow{position:absolute;inset:-40px -10% -40px auto;width:60%;background:radial-gradient(closest-side,rgba(79,143,255,.32),transparent 70%);filter:blur(30px);z-index:0;pointer-events:none}
+.mock-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:34px;padding:0 12px;border-radius:var(--radius);background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px var(--line);color:var(--text-mute);font-size:11px;letter-spacing:.04em}
+.mock-bar small{flex:1;text-align:center;color:var(--text-mute)}
+.mock-bar-kbd{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--text-soft);background:rgba(255,255,255,.04);padding:4px 8px;border-radius:5px;box-shadow:inset 0 0 0 1px var(--line-strong)}
 .mock-bar-dots{display:flex;gap:6px}
-.mock-bar-dots span{width:9px;height:9px;border-radius:999px;background:rgba(255,255,255,0.08)}
+.mock-bar-dots span{width:10px;height:10px;border-radius:999px;background:rgba(255,255,255,.08)}
 .mock-bar-dots span:first-child{background:#ff6173}
 .mock-bar-dots span:nth-child(2){background:#f5b057}
 .mock-bar-dots span:nth-child(3){background:#34d399}
-.mock-overlay{
-  display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:14px;
-  padding:14px 16px;height:88px;
-  border-radius:14px;
-  background:linear-gradient(180deg,rgba(14,22,34,0.95),rgba(8,14,25,0.95));
-  box-shadow:inset 0 0 0 1px rgba(52,211,153,0.34),0 0 0 6px rgba(52,211,153,0.04);
-}
-.mock-mic{
-  width:44px;height:44px;border-radius:999px;flex:0 0 auto;
-  background:radial-gradient(circle at 32% 28%,#6ee7b7,#15a564 72%);
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.18),0 0 26px rgba(52,211,153,0.45);
-  position:relative;
-}
-.mock-mic::after{
-  content:"";position:absolute;inset:0;border-radius:inherit;
-  box-shadow:0 0 0 0 rgba(52,211,153,0.55);
-  animation:mock-pulse 1.6s ease-out infinite;
-}
-@keyframes mock-pulse{
-  0%{box-shadow:0 0 0 0 rgba(52,211,153,0.55)}
-  70%{box-shadow:0 0 0 14px rgba(52,211,153,0)}
-  100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}
-}
+.mock-overlay{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--radius-md);background:linear-gradient(180deg,rgba(14,22,34,.95) 0%,rgba(8,14,25,.95) 100%);box-shadow:inset 0 0 0 1px rgba(52,211,153,.34),0 0 0 6px rgba(52,211,153,.04)}
+.mock-mic{width:48px;height:48px;border-radius:999px;flex:0 0 auto;background:radial-gradient(circle at 32% 28%,#6ee7b7 0%,#15a564 72%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 0 26px rgba(52,211,153,.45);position:relative}
+.mock-mic::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(52,211,153,.55);animation:mock-pulse 1.6s ease-out infinite}
+@keyframes mock-pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}70%{box-shadow:0 0 0 16px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
 .mock-text{display:grid;min-width:0}
 .mock-text strong{font-size:14px;font-weight:600;color:#fff}
 .mock-text span{font-size:12px;color:var(--text-soft);margin-top:2px}
-.mock-wave{display:flex;align-items:center;gap:3px;height:28px;width:120px}
-.mock-wave span{flex:1;min-width:2px;max-width:4px;border-radius:999px;background:var(--good);height:var(--h);opacity:.7}
-.mock-timer{
-  font-size:12px;font-weight:600;color:var(--text-soft);
-  background:rgba(255,255,255,0.05);padding:4px 8px;border-radius:6px;
-  font-variant-numeric:tabular-nums;
-}
-.mock-paste{
-  border-radius:12px;padding:14px 16px;
-  background:rgba(255,255,255,0.03);
-  box-shadow:inset 0 0 0 1px var(--line);
-}
-.mock-paste-label{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--brand)}
-.mock-paste p{margin-top:6px;font-size:14px;line-height:1.5;color:var(--text-soft)}
+.mock-wave{display:flex;align-items:flex-end;gap:3px;height:32px;width:140px}
+.mock-wave span{flex:1;min-width:2px;max-width:4px;border-radius:999px;background:var(--good);height:var(--h);opacity:.6;animation:mock-wave 1.2s ease-in-out infinite alternate;animation-delay:var(--d,0ms)}
+@keyframes mock-wave{0%{transform:scaleY(.5);opacity:.4}100%{transform:scaleY(1);opacity:.85}}
+.mock-timer{font-size:12px;font-weight:600;color:var(--text-soft);background:rgba(255,255,255,.05);padding:5px 9px;border-radius:6px;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px var(--line-strong)}
+.mock-paste{border-radius:var(--radius-md);padding:16px 18px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px var(--line)}
+.mock-paste-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.mock-paste-label{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--brand);text-transform:uppercase}
+.mock-paste-app{font-size:11px;color:var(--text-mute);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.mock-typing{font-size:14px;line-height:1.55;color:var(--text)}
+.mock-typing span{border-right:2px solid var(--brand);padding-right:2px;animation:caret 1s steps(2) infinite}
+@keyframes caret{50%{border-color:transparent}}
 
-.features{
-  max-width:1240px;margin:0 auto;
-  padding:0 clamp(20px,5vw,56px) 64px;
-  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;
-  background:var(--line);border-radius:18px;overflow:hidden;
-  box-shadow:inset 0 0 0 1px var(--line);
-}
-.feature{
-  background:var(--surface);padding:32px 28px;
-  display:grid;gap:14px;align-content:start;
-}
-.feature-num{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--brand)}
-.feature h2{font-size:22px;font-weight:600;letter-spacing:-0.012em;color:var(--text)}
-.feature p{font-size:14px;line-height:1.55;color:var(--text-soft)}
+/* ---------- How it works (flow) ---------- */
+.section-flow{padding-top:0}
+.flow{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4.5vw,56px);display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;list-style:none}
+.flow-step{position:relative;padding:32px 28px;border-radius:var(--radius-lg);background:linear-gradient(180deg,rgba(22,34,58,.55),rgba(13,22,34,.6));box-shadow:inset 0 0 0 1px var(--line-strong);display:grid;gap:12px;align-content:start}
+.flow-step::before{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(180deg,rgba(79,143,255,.16),transparent 60%);opacity:0;transition:opacity 200ms ease;pointer-events:none}
+.flow-step:hover::before{opacity:1}
+.flow-step-num{font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--brand);font-feature-settings:"tnum"}
+.flow-step h3{font-size:20px;font-weight:600;letter-spacing:-0.012em;color:var(--text)}
+.flow-step p{color:var(--text-soft);font-size:15px;line-height:1.55;max-width:38ch}
 
-.cta-band{
-  max-width:1240px;margin:0 auto;
-  padding:48px clamp(20px,5vw,56px);
-  display:flex;align-items:center;justify-content:space-between;gap:32px;
-  border-radius:18px;
-  background:linear-gradient(135deg,rgba(79,143,255,0.18),rgba(20,30,49,0.6));
-  box-shadow:inset 0 0 0 1px var(--line-strong);
-  margin-top:0;
-}
-.cta-copy{display:grid;gap:10px;max-width:600px}
-.cta-band h2{font-size:clamp(28px,4vw,40px);font-weight:600;letter-spacing:-0.02em;color:var(--text);text-wrap:balance}
-.cta-band p{color:var(--text-soft);font-size:15px;line-height:1.5}
+/* ---------- Use cases ---------- */
+.section-cases{padding-top:0}
+.case-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.case-card{padding:22px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);display:grid;gap:14px;transition:box-shadow 160ms ease,transform 160ms ease}
+.case-card:hover{box-shadow:inset 0 0 0 1px var(--line-bright);transform:translateY(-2px)}
+.case-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.case-tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);padding:4px 10px;border-radius:999px;background:rgba(79,143,255,.12);box-shadow:inset 0 0 0 1px rgba(79,143,255,.24)}
+.case-time{font-size:11px;font-weight:600;color:var(--text-mute);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.case-card p{font-size:15px;line-height:1.55;color:var(--text)}
+.case-card p.mono{font-size:13px;color:var(--accent)}
 
-.site-footer{
-  max-width:1240px;margin:64px auto 0;
-  padding:32px clamp(20px,5vw,56px);
-  display:flex;align-items:center;justify-content:space-between;
-  border-top:1px solid var(--line);color:var(--text-mute);
-}
-.site-footer small{font-size:13px}
+/* ---------- Why grid (feature list) ---------- */
+.why-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px 40px}
+.why-item{display:grid;gap:8px;padding-top:22px;border-top:1px solid var(--line-strong)}
+.why-item dt{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--text)}
+.why-item dt svg{color:var(--brand);flex:0 0 auto}
+.why-item dd{color:var(--text-soft);font-size:15px;line-height:1.55;max-width:42ch}
 
-@media(max-width:920px){
-  .hero{grid-template-columns:1fr;gap:48px;padding:64px 20px}
+/* ---------- Pricing teaser (home) ---------- */
+.section-pricing-teaser{padding-top:32px}
+.pricing-teaser{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:48px;align-items:center}
+.pricing-teaser-copy{display:grid;gap:18px;max-width:600px}
+.pricing-teaser-copy h2{font-size:clamp(28px,3.6vw,42px);font-weight:600;letter-spacing:-0.022em;color:var(--text);max-width:22ch}
+.pricing-teaser-copy .section-lede{font-size:17px;line-height:1.55;color:var(--text-soft)}
+
+/* ---------- Pricing card ---------- */
+.section-pricing{padding-top:0}
+.pricing-grid{display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);gap:32px;align-items:start;margin-bottom:64px}
+.pricing-card{display:flex;flex-direction:column;gap:20px;padding:32px;border-radius:var(--radius-xl);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong);position:relative}
+.pricing-card-emphasized{background:linear-gradient(180deg,rgba(22,34,58,.9),rgba(11,19,32,.95));box-shadow:inset 0 0 0 1px rgba(79,143,255,.34),0 30px 80px -30px rgba(47,111,255,.45);position:relative;overflow:hidden}
+.pricing-card-emphasized::before{content:"";position:absolute;inset:0;background:radial-gradient(closest-side at 50% 0%,rgba(79,143,255,.20),transparent 70%);pointer-events:none}
+.pricing-card > *{position:relative;z-index:1}
+.pricing-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pricing-price{display:flex;align-items:baseline;gap:4px;color:var(--text)}
+.pricing-price-num{font-size:48px;font-weight:600;letter-spacing:-0.025em}
+.pricing-price-suffix{font-size:14px;color:var(--text-soft);font-weight:500}
+.pricing-card-desc{color:var(--text-soft);font-size:15px;line-height:1.55}
+.pricing-features{display:grid;gap:10px;list-style:none;margin:4px 0}
+.pricing-features li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;font-size:15px;line-height:1.5;color:var(--text)}
+.pricing-features li::before{content:"";width:16px;height:16px;border-radius:999px;background:rgba(52,211,153,.16);box-shadow:inset 0 0 0 1px rgba(52,211,153,.4);background-image:url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%2334d399' d='M13.78 5.22a.75.75 0 0 1 0 1.06l-6 6a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06L7.25 10.69l5.47-5.47a.75.75 0 0 1 1.06 0Z'/%3E%3C/svg%3E");background-position:center;background-repeat:no-repeat;background-size:12px;margin-top:2px}
+.pricing-card-meta{padding:32px;display:grid;gap:14px;align-content:start}
+.pricing-card-meta h3{font-size:20px;font-weight:600;letter-spacing:-0.012em;color:var(--text)}
+.pricing-card-meta p{color:var(--text-soft);font-size:15px;line-height:1.55}
+.pricing-bullets{display:grid;gap:10px;list-style:none;margin-top:4px}
+.pricing-bullets li{font-size:15px;line-height:1.55;color:var(--text-soft)}
+.pricing-bullets strong{color:var(--text);font-weight:600}
+.pricing-compare{padding:32px;border-radius:var(--radius-lg);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line)}
+.pricing-compare h3{font-size:20px;font-weight:600;letter-spacing:-0.012em;color:var(--text);margin-bottom:14px}
+.compare-rows{display:grid;gap:1px;background:var(--line);border-radius:var(--radius-md);overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.compare-row{background:var(--surface);padding:14px 16px;display:grid;grid-template-columns:160px 1fr;gap:16px;align-items:center}
+.compare-row strong{font-size:18px;font-weight:600;color:var(--text);font-feature-settings:"tnum"}
+.compare-row span{color:var(--text-soft);font-size:14px}
+.compare-note{margin-top:14px;font-size:13px;color:var(--text-mute)}
+
+/* ---------- FAQ ---------- */
+.section-faq{padding-top:0}
+.faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.faq-item{border-radius:var(--radius-md);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.faq-item summary{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:14px;cursor:pointer;font-weight:600;font-size:15px;color:var(--text);list-style:none}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary::after{content:"+";font-weight:300;font-size:22px;color:var(--text-mute);transition:transform 160ms ease}
+.faq-item[open] summary::after{transform:rotate(45deg);color:var(--brand)}
+.faq-item p{padding:0 20px 18px;color:var(--text-soft);font-size:15px;line-height:1.55;max-width:68ch}
+
+/* ---------- Download specs ---------- */
+.section-specs{padding-top:0}
+.specs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.spec-card{padding:32px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong);display:grid;gap:14px;align-content:start}
+.spec-card h3{font-size:22px;font-weight:600;letter-spacing:-0.014em;color:var(--text)}
+.spec-list{display:grid;gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line);margin-top:4px}
+.spec-row{background:var(--surface-soft);display:grid;grid-template-columns:140px 1fr;gap:16px;padding:12px 16px;align-items:center}
+.spec-row dt{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:600}
+.spec-row dd{font-size:14px;color:var(--text)}
+.spec-card-hotkey{background:linear-gradient(180deg,rgba(22,34,58,.7),rgba(13,22,34,.8));align-items:start}
+.hotkey-display{display:flex;align-items:center;gap:14px;padding:20px;justify-content:center;background:rgba(255,255,255,.025);border-radius:var(--radius-md);box-shadow:inset 0 0 0 1px var(--line);margin-top:4px}
+.kbd-lg{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;font-weight:600;padding:12px 18px;border-radius:10px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 -2px 0 rgba(0,0,0,.32);color:#fff;letter-spacing:.04em}
+.hotkey-plus{font-size:18px;color:var(--text-mute);font-weight:300}
+.spec-card-hotkey p{font-size:14px;line-height:1.55;color:var(--text-soft)}
+
+/* ---------- CTA ---------- */
+.section-cta{padding-top:32px;padding-bottom:64px}
+.cta-band{position:relative;padding:48px clamp(28px,4.5vw,56px);border-radius:var(--radius-xl);background:linear-gradient(135deg,rgba(79,143,255,.22) 0%,rgba(34,211,238,.16) 50%,rgba(167,139,250,.18) 100%);box-shadow:inset 0 0 0 1px var(--line-bright);display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px;overflow:hidden}
+.cta-band::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 400px at 100% -30%,rgba(255,255,255,.06),transparent 60%);pointer-events:none}
+.cta-glyph{position:relative;width:88px;height:88px;border-radius:24px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px var(--line-bright);display:grid;place-items:center}
+.cta-glyph-mic{width:44px;height:44px;border-radius:999px;background:radial-gradient(circle at 32% 28%,#6aa5ff,#1d52d3 72%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2),0 0 24px rgba(47,111,255,.45)}
+.cta-band .cta-copy{display:grid;gap:10px;max-width:520px}
+.cta-band h2{font-size:clamp(26px,3.2vw,36px);font-weight:600;letter-spacing:-0.02em;color:var(--text);max-width:24ch}
+.cta-band p{color:var(--text-soft);font-size:15px;line-height:1.55;max-width:54ch}
+.cta-actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+
+/* ---------- Footer ---------- */
+.site-footer{margin-top:32px;border-top:1px solid var(--line);padding:48px 0 32px;color:var(--text-mute)}
+.site-footer-inner{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4.5vw,56px) 32px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr);gap:48px}
+.footer-brand{display:grid;gap:12px;max-width:340px}
+.footer-brand p{color:var(--text-mute);font-size:14px;line-height:1.55}
+.footer-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
+.footer-cols h3{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-soft);margin-bottom:14px}
+.footer-cols ul{list-style:none;display:grid;gap:10px}
+.footer-cols a,.footer-cols li{color:var(--text-mute);font-size:14px;font-weight:400;transition:color 120ms ease}
+.footer-cols a:hover{color:var(--text)}
+.site-footer-bottom{max-width:1240px;margin:0 auto;padding:24px clamp(20px,4.5vw,56px) 0;display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--line);color:var(--text-mute);flex-wrap:wrap}
+.site-footer-bottom small{font-size:13px}
+
+/* ---------- Responsive ---------- */
+@media(max-width:1080px){
+  .hero-shell{grid-template-columns:1fr;gap:48px}
+  .hero-mock{justify-items:start}
+  .pricing-teaser{grid-template-columns:1fr;gap:32px}
+  .pricing-grid{grid-template-columns:1fr}
+}
+@media(max-width:860px){
+  .site-nav{display:none}
+  .flow,.case-grid,.why-grid{grid-template-columns:1fr}
+  .specs-grid,.faq-grid{grid-template-columns:1fr}
+  .footer-cols{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .site-footer-inner{grid-template-columns:1fr;gap:32px}
+  .cta-band{grid-template-columns:1fr;gap:24px;text-align:left}
+  .cta-glyph{display:none}
+}
+@media(max-width:560px){
+  .hero{padding:64px 0 48px}
   .hero h1{font-size:44px}
-  .features{grid-template-columns:1fr}
-  .cta-band{flex-direction:column;align-items:flex-start;gap:20px}
-  .site-header nav a:not(.btn){display:none}
+  .hero-actions{flex-direction:column;align-items:stretch;gap:14px}
+  .hero-actions .btn{width:100%}
+  .hero-actions-centered .btn{width:auto}
+  .case-card{padding:18px}
+  .pricing-card{padding:24px}
+  .footer-cols{grid-template-columns:1fr}
+  .compare-row{grid-template-columns:1fr;gap:4px}
+  .pricing-price-num{font-size:40px}
 }
 `;
 }
 
 function dashboardCss(): string {
   return `
-.dashboard{
-  background:radial-gradient(900px 500px at 0% -10%,rgba(79,143,255,0.14),transparent 60%),var(--bg);
-  min-height:100vh;
-}
-.app-shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
-.sidebar{
-  display:flex;flex-direction:column;
-  padding:24px 20px;
-  border-right:1px solid var(--line);
-  background:var(--bg-soft);
-}
-.sidebar nav{display:grid;gap:4px;margin-top:36px}
-.sidebar nav a{
-  padding:9px 12px;border-radius:9px;
-  font-size:14px;font-weight:500;color:var(--text-soft);
-  transition:background-color 120ms ease,color 120ms ease;
-}
-.sidebar nav a:hover{background:rgba(255,255,255,0.04);color:var(--text)}
-.sidebar nav a[data-active="true"]{
-  background:var(--brand-soft);color:#fff;
-  box-shadow:inset 0 0 0 1px rgba(79,143,255,0.34);
-}
-.sidebar-foot{margin-top:auto;padding-top:24px;color:var(--text-mute);font-size:12px}
+.dashboard{background:var(--bg);min-height:100dvh;isolation:isolate}
 
-.content{padding:48px clamp(20px,4vw,56px);min-width:0;display:grid;align-content:start;gap:24px}
-.content-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap}
-.content-head .eyebrow{margin-bottom:6px}
-.content-head h1{font-size:clamp(32px,4vw,46px);font-weight:600;letter-spacing:-0.022em;color:var(--text)}
+/* ---------- Top bar ---------- */
+.dash-topbar{position:sticky;top:0;z-index:10;background:rgba(4,7,13,.78);backdrop-filter:blur(16px) saturate(1.1);-webkit-backdrop-filter:blur(16px) saturate(1.1);border-bottom:1px solid var(--line)}
+.dash-topbar-inner{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:flex;align-items:center;justify-content:space-between;gap:24px;height:64px}
+.dash-topnav{display:flex;align-items:center;gap:4px}
+.dash-topnav a{padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:var(--text-soft);transition:color 120ms ease,background-color 120ms ease}
+.dash-topnav a:hover{color:var(--text)}
+.dash-topnav a[data-active="true"]{color:var(--text);background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.dash-topbar-user{display:flex;align-items:center;gap:14px;min-height:40px}
+.user-pill{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 6px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.user-avatar{width:28px;height:28px;border-radius:999px;background:linear-gradient(135deg,#1e64f0,#22d3ee 100%);display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700;flex:0 0 auto}
+.user-pill-text{display:grid;line-height:1.2;min-width:0}
+.user-pill-text strong{font-size:13px;font-weight:600;color:var(--text);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.user-pill-text small{font-size:11px;color:var(--text-mute);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* ---------- Page shell ---------- */
+.dash-main{padding:48px 0 96px;background:radial-gradient(900px 500px at 10% -10%,rgba(79,143,255,.12),transparent 60%),radial-gradient(700px 380px at 90% 0%,rgba(34,211,238,.08),transparent 60%),var(--bg)}
+.dash-shell{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:grid;gap:28px}
+
+.dash-page-head{display:grid;gap:10px}
+.dash-page-head h1{font-size:clamp(30px,3.6vw,44px);font-weight:600;letter-spacing:-0.022em;color:var(--text);max-width:24ch}
+.dash-subtitle{font-size:16px;color:var(--text-soft);max-width:60ch}
+
+/* ---------- Approval slot ---------- */
 .approval-slot:empty{display:none}
-.approval-card{
-  display:flex;align-items:center;justify-content:space-between;gap:20px;
-  padding:18px 20px;border-radius:14px;
-  background:var(--surface);
-  box-shadow:inset 0 0 0 1px var(--line-strong);
-}
-.approval-card.approval-ok{box-shadow:inset 0 0 0 1px rgba(52,211,153,0.34)}
-.approval-card.approval-warn{box-shadow:inset 0 0 0 1px rgba(255,97,115,0.34)}
+.approval-card{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 22px;border-radius:var(--radius-md);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong)}
+.approval-card.approval-ok{box-shadow:inset 0 0 0 1px rgba(52,211,153,.4);background:linear-gradient(180deg,rgba(52,211,153,.08),rgba(13,22,34,.4))}
+.approval-card.approval-warn{box-shadow:inset 0 0 0 1px rgba(255,97,115,.4);background:linear-gradient(180deg,rgba(255,97,115,.08),rgba(13,22,34,.4))}
 .approval-text{display:grid;gap:4px;min-width:0}
 .approval-text strong{font-size:14px;font-weight:600;color:var(--text)}
-.approval-text p{font-size:13px;color:var(--text-soft)}
+.approval-text p{font-size:13px;color:var(--text-soft);line-height:1.5}
 
-.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.card{
-  display:grid;align-content:start;gap:8px;
-  padding:22px;border-radius:14px;
-  background:var(--surface);
-  box-shadow:inset 0 0 0 1px var(--line),0 1px 0 rgba(255,255,255,0.02);
-}
-.card-eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--brand)}
-.card h2{font-size:22px;font-weight:600;letter-spacing:-0.014em;color:var(--text);word-break:break-word}
-.card p{font-size:13px;color:var(--text-soft);line-height:1.5}
-.card-wide{grid-column:1/-1}
-.card-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.usage-bar{height:8px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,0.06);box-shadow:inset 0 0 0 1px var(--line)}
-.usage-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--good))}
+/* ---------- Hero card ---------- */
+.dash-hero{position:relative;padding:36px 36px 32px;border-radius:var(--radius-xl);background:linear-gradient(135deg,rgba(79,143,255,.18) 0%,rgba(34,211,238,.10) 60%,rgba(167,139,250,.12) 100%);box-shadow:inset 0 0 0 1px var(--line-bright);overflow:hidden;display:grid;gap:18px}
+.dash-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 360px at 100% -10%,rgba(255,255,255,.06),transparent 60%);pointer-events:none}
+.dash-hero > *{position:relative;z-index:1}
+.dash-hero-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.dash-hero-plan{font-size:14px;font-weight:600;color:var(--text-soft);letter-spacing:.02em}
+.dash-hero-title{font-size:clamp(24px,3vw,32px);font-weight:600;letter-spacing:-0.018em;color:var(--text);max-width:32ch}
+.dash-hero-sub{font-size:15px;color:var(--text-soft);line-height:1.55;max-width:60ch}
+.dash-hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
 
-.device-list{display:grid;gap:8px;margin-top:14px}
-.device-row{
-  display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:12px 14px;border-radius:10px;
-  background:var(--surface-soft);
-  box-shadow:inset 0 0 0 1px var(--line);
-}
+.dash-hero-empty{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;background:linear-gradient(135deg,rgba(79,143,255,.18) 0%,rgba(20,30,49,.6) 100%)}
+.dash-hero-glyph{width:80px;height:80px;border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px var(--line-bright);display:grid;place-items:center;flex:0 0 auto}
+.dash-hero-mic{width:42px;height:42px;border-radius:999px;background:radial-gradient(circle at 32% 28%,#6aa5ff,#1d52d3 72%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 0 22px rgba(47,111,255,.4)}
+.dash-hero-empty .dash-hero-copy{display:grid;gap:6px;max-width:520px}
+.dash-hero-empty h2{font-size:clamp(22px,2.8vw,30px);font-weight:600;letter-spacing:-0.018em;color:var(--text);max-width:26ch}
+.dash-hero-empty p{font-size:15px;color:var(--text-soft);line-height:1.55}
+.dash-hero-empty .dash-hero-actions{margin:0;flex-direction:column;align-items:flex-end;gap:10px}
+
+/* ---------- Content grid ---------- */
+.dash-content{display:grid;gap:24px}
+.dash-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:20px}
+
+.dash-card{padding:24px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-card);display:grid;align-content:start;gap:16px;min-width:0}
+.dash-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.dash-card-title{font-size:18px;font-weight:600;letter-spacing:-0.012em;color:var(--text);margin-top:8px}
+.dash-card-pill{font-size:11px;font-weight:600;color:var(--text-soft);padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
+
+.dash-card-usage{grid-column:span 4}
+.dash-card-stats{grid-column:span 2}
+.dash-card-account{grid-column:span 2}
+.dash-card-devices{grid-column:span 4}
+
+/* ---------- Usage meter ---------- */
+.usage-meter{display:grid;gap:10px;margin-top:4px}
+.usage-meter-row{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
+.usage-meter-row strong{font-size:32px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum"}
+.usage-meter-row span{font-size:14px}
+.usage-meter-row-foot small{font-size:12px;color:var(--text-mute);font-feature-settings:"tnum"}
+.usage-bar{height:10px;border-radius:999px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;position:relative}
+.usage-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand) 0%,var(--accent) 100%);box-shadow:0 0 18px rgba(79,143,255,.45);transition:width 240ms ease}
+.usage-bar span.is-over{background:linear-gradient(90deg,var(--warn) 0%,var(--bad) 100%);box-shadow:0 0 18px rgba(245,176,87,.45)}
+
+.usage-overage{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:rgba(245,176,87,.08);box-shadow:inset 0 0 0 1px rgba(245,176,87,.28)}
+.usage-overage strong{font-size:18px;font-weight:600;color:var(--warn);font-feature-settings:"tnum"}
+.usage-overage small{font-size:12px;color:var(--text-soft)}
+
+/* ---------- Stat grid ---------- */
+.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.stat-item{padding:8px 16px;display:grid;gap:4px;border-left:1px solid var(--line)}
+.stat-item:first-child{padding-left:0;border-left:0}
+.stat-item:last-child{padding-right:0}
+.stat-item dt{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mute);font-weight:600}
+.stat-item dd{font-size:24px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum"}
+
+/* ---------- Key/value list ---------- */
+.kv-list{display:grid;gap:1px;border-radius:var(--radius);overflow:hidden;background:var(--line)}
+.kv-row{background:var(--surface-soft);display:grid;grid-template-columns:90px 1fr;gap:14px;padding:11px 14px;align-items:center;min-width:0}
+.kv-row dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:600}
+.kv-row dd{font-size:14px;color:var(--text);min-width:0}
+
+/* ---------- Devices ---------- */
+.empty-state{padding:18px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line)}
+.empty-state p{font-size:14px;line-height:1.55}
+.empty-state p:first-child{color:var(--text);font-weight:600}
+.device-list{list-style:none;display:grid;gap:8px}
+.device-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line);transition:box-shadow 120ms ease,background-color 120ms ease}
+.device-row:hover{box-shadow:inset 0 0 0 1px var(--line-bright);background:rgba(255,255,255,.03)}
+.device-icon{width:36px;height:36px;border-radius:10px;background:rgba(79,143,255,.12);box-shadow:inset 0 0 0 1px rgba(79,143,255,.28);color:var(--brand);display:grid;place-items:center;flex:0 0 auto}
 .device-text{display:grid;gap:2px;min-width:0}
-.device-text strong{font-size:14px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.device-text strong{font-size:14px;font-weight:600;color:var(--text)}
 .device-text small{font-size:12px;color:var(--text-mute)}
 
-@media(max-width:900px){
-  .app-shell{grid-template-columns:1fr}
-  .sidebar{display:none}
-  .cards{grid-template-columns:1fr}
+/* ---------- Responsive ---------- */
+@media(max-width:1080px){
+  .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dash-card-usage,.dash-card-devices{grid-column:span 2}
+  .dash-card-stats,.dash-card-account{grid-column:span 1}
+}
+@media(max-width:760px){
+  .dash-topnav{display:none}
+  .dash-grid{grid-template-columns:1fr}
+  .dash-card-usage,.dash-card-stats,.dash-card-account,.dash-card-devices{grid-column:auto}
   .approval-card{flex-direction:column;align-items:flex-start}
+  .dash-hero{padding:28px 24px}
+  .dash-hero-empty{grid-template-columns:1fr;text-align:left}
+  .dash-hero-empty .dash-hero-actions{align-items:stretch}
+  .dash-hero-empty .dash-hero-actions .btn{width:100%}
+  .stat-grid{grid-template-columns:1fr;gap:1px;background:var(--line);border-radius:var(--radius);overflow:hidden}
+  .stat-item{background:var(--surface-soft);padding:12px 14px;border-left:0;border-top:0}
+  .user-pill-text{display:none}
 }
 `;
 }

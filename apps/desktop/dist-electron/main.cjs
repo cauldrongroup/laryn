@@ -64,6 +64,8 @@ const status = {
 const DICTATION_WINDOW_WIDTH = 800;
 const DICTATION_WINDOW_HEIGHT = 120;
 const DICTATION_BOTTOM_OFFSET = 56;
+const APP_ICON_PATH = resolveAssetPath("logo.png");
+const TRAY_ICON_PATH = resolveAssetPath("tray.png");
 
 app.setName("Laryn");
 if (process.platform === "win32") {
@@ -109,6 +111,7 @@ function createWindow() {
     show: false,
     resizable: false,
     title: "Laryn",
+    icon: APP_ICON_PATH,
     frame: false,
     backgroundColor: "#06090f",
     webPreferences: {
@@ -230,7 +233,10 @@ function isTrustedRenderer(webContents) {
 }
 
 function createTray() {
-  const icon = nativeImage.createEmpty();
+  const icon = nativeImage.createFromPath(TRAY_ICON_PATH);
+  if (process.platform === "win32" && !icon.isEmpty()) {
+    icon.setTemplateImage(false);
+  }
   tray = new Tray(icon);
   tray.setToolTip("Laryn");
   tray.setContextMenu(
@@ -1041,6 +1047,15 @@ function isActiveHotkeyPressed() {
     (!binding.modifiers.win || hotkeyState.winDown) &&
     (!binding.keyCode || hotkeyState.pressedKeyCodes.has(binding.keyCode))
   );
+}
+
+function resolveAssetPath(fileName) {
+  const localPath = path.join(__dirname, "assets", fileName);
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+
+  return path.join(__dirname, "..", "assets", fileName);
 }
 
 function updateHotkeyState(event, isPressed) {

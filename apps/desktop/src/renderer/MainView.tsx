@@ -14,7 +14,6 @@ import {
   Square,
   Trash2,
   UserRound,
-  Waves,
   X
 } from "lucide-react";
 import type { CleanupTier, HistoryEntry } from "@laryn/shared";
@@ -30,6 +29,7 @@ import {
 import type { FlowState } from "./useRecorder";
 
 const BAR_COUNT = 28;
+const logoMarkUrl = "./logo-mark.svg";
 
 type RouteId = "dictate" | "history";
 
@@ -257,9 +257,7 @@ function NavRail({
       className="row-span-2 grid grid-rows-[auto_auto_1fr_auto] gap-1 border-r border-[color:var(--color-line)] bg-[color:var(--color-canvas)] px-3 pb-4 pt-2"
     >
       <div className="app-no-drag mb-3 flex items-center gap-2.5 px-2 py-1.5">
-        <span className="grid size-7 place-items-center rounded-md bg-[color:var(--color-brand-soft)] text-[color:var(--color-brand)]">
-          <Waves size={14} />
-        </span>
+        <img className="size-7 rounded-md" src={logoMarkUrl} alt="" aria-hidden="true" />
         <div className="grid leading-tight">
           <strong className="text-sm font-semibold tracking-tight text-white">
             Laryn

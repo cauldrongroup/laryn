@@ -42,12 +42,14 @@
     "appId": "dev.laryn.desktop",
     "productName": "Laryn",
     "files": [
+      "assets/**",
       "config.cjs",
       "dist/**",
       "dist-electron/**",
       "main.cjs",
       "package.json"
     ],
+    "icon": "assets/logo.png",
     "win": {
       "target": "nsis"
     }
