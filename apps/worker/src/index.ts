@@ -57,10 +57,22 @@ type CleanupResult = {
   skipped?: boolean;
   fallbackUsed?: boolean;
   warning?: string;
+  dictionaryWarning?: string;
   inputTokens?: number;
   outputTokens?: number;
   estimatedTokens?: boolean;
   costMicroUsd?: number;
+};
+
+type NormalizedDictionaryEntry = {
+  kind: "vocabulary" | "replacement";
+  phrase: string;
+  replacement?: string;
+};
+
+type NormalizedDictionaryPayload = {
+  entries: NormalizedDictionaryEntry[];
+  warning?: string;
 };
 
 type TranscriptionProvider = "workers-ai" | "groq";
@@ -105,6 +117,9 @@ const DEFAULT_TRANSCRIPTION_LANGUAGE = "en";
 const DEFAULT_TRANSCRIPTION_CONTEXT =
   "This is desktop dictation. Preserve the speaker's exact words where possible. Common terms include Laryn, Cloudflare, Workers AI, AI Gateway, Groq, Whisper, Electron, TypeScript, JavaScript, Node, pnpm, PowerShell, GitHub, API, JSON, URL, Windows, Ctrl, Win, hotkey, cleanup, transcription, transcript.";
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+const MAX_DICTIONARY_ENTRIES = 200;
+const MAX_DICTIONARY_PHRASE_LENGTH = 60;
+const MAX_DICTIONARY_REPLACEMENT_LENGTH = 120;
 const DEVICE_CODE_TTL_SECONDS = 600;
 const WORKERS_AI_TEXT_MODEL_PRICING: Record<string, { inputMicroUsdPerMillionTokens: number; outputMicroUsdPerMillionTokens: number }> = {
   "@cf/meta/llama-3.2-1b-instruct": {
@@ -146,6 +161,11 @@ Rules:
 - Fix obvious speech-to-text errors when the surrounding sentence makes the intended words clear.
 - Repair grammar, word order, and nonsensical fragments caused by misheard dictation.
 - Replace clearly wrong homophones or near-sounding phrases with the intended phrase.
+- Use provided dictionary entries as references for likely speech-to-text repairs.
+- Do not insert dictionary words that are not supported by the transcript context.
+- Do not replace text solely because a dictionary entry exists.
+- Prefer explicit dictionary replacement rules over vocabulary-only hints when the transcript contains the wrong phrase.
+- Preserve meaning over forcing dictionary terms.
 - Add basic punctuation and capitalization.
 - Remove repeated filler words only when they are clearly accidental.
 - Keep intentional informal phrasing and sentence fragments.
@@ -556,6 +576,7 @@ app.post("/v1/transcriptions", async (c) => {
   const requestId = crypto.randomUUID();
   const started = Date.now();
   const cleanupTier = normalizeCleanupTier(String(form.get("cleanupTier") ?? c.env.CLEANUP_TIER ?? DEFAULT_CLEANUP_TIER));
+  const dictionary = cleanupTier === "off" ? { entries: [] } : normalizeDictionaryPayload(form.get("dictionary"));
   const durationMs = Number.parseInt(String(form.get("durationMs") ?? "0"), 10);
   const provider = transcriptionProvider(c.env);
   const transcriptionModel = transcriptionModelForProvider(provider, c.env);
@@ -572,7 +593,9 @@ app.post("/v1/transcriptions", async (c) => {
       transcriptionProvider: provider,
       transcriptionModel,
       transcriptionLanguage: transcriptionLanguage(c.env),
-      transcriptionHintsConfigured: Boolean(transcriptionPrompt(c.env))
+      transcriptionHintsConfigured: Boolean(transcriptionPrompt(c.env)),
+      dictionaryConfigured: dictionary.entries.length > 0,
+      dictionaryEntryCount: dictionary.entries.length
     })
   );
 
@@ -601,6 +624,9 @@ app.post("/v1/transcriptions", async (c) => {
       cleanupApplied: false,
       cleanupTier,
       cleanupWarning: "No speech detected.",
+      dictionaryApplied: false,
+      dictionaryEntryCount: dictionary.entries.length,
+      dictionaryWarning: dictionary.warning,
       wordCount: 0,
       durationMs: Date.now() - started,
       transcriptionProvider: provider,
@@ -611,7 +637,7 @@ app.post("/v1/transcriptions", async (c) => {
     return c.json(result);
   }
 
-  const cleanup = await cleanupTranscript(rawText, cleanupTier, c.env);
+  const cleanup = await cleanupTranscript(rawText, cleanupTier, c.env, dictionary.entries, dictionary.warning);
   const text = cleanup.applied ? cleanup.text : rawText;
   const usageEventId = crypto.randomUUID();
   const normalizedDurationMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
@@ -679,6 +705,9 @@ app.post("/v1/transcriptions", async (c) => {
     cleanupTier,
     cleanupWarning: cleanup.warning,
     fallbackUsed: cleanup.fallbackUsed,
+    dictionaryApplied: cleanup.applied && dictionary.entries.length > 0,
+    dictionaryEntryCount: dictionary.entries.length,
+    dictionaryWarning: cleanup.dictionaryWarning,
     wordCount: countWords(text),
     durationMs: Date.now() - started,
     transcriptionProvider: provider,
@@ -1179,7 +1208,13 @@ async function audioBase64(audio: File): Promise<string> {
   return btoa(binary);
 }
 
-async function cleanupTranscript(rawText: string, tier: CleanupTier, env: Env): Promise<CleanupResult> {
+async function cleanupTranscript(
+  rawText: string,
+  tier: CleanupTier,
+  env: Env,
+  dictionary: NormalizedDictionaryEntry[] = [],
+  dictionaryWarning?: string
+): Promise<CleanupResult> {
   if (tier === "off") {
     return {
       text: rawText,
@@ -1187,7 +1222,8 @@ async function cleanupTranscript(rawText: string, tier: CleanupTier, env: Env): 
       applied: false,
       skipped: true,
       fallbackUsed: false,
-      warning: "Cleanup skipped: cleanup disabled."
+      warning: "Cleanup skipped: cleanup disabled.",
+      dictionaryWarning
     };
   }
 
@@ -1201,15 +1237,16 @@ async function cleanupTranscript(rawText: string, tier: CleanupTier, env: Env): 
       applied: false,
       skipped: true,
       fallbackUsed: false,
-      warning: `Cleanup skipped: ${skipReason}.`
+      warning: `Cleanup skipped: ${skipReason}.`,
+      dictionaryWarning
     };
   }
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];
     try {
-      const inputText = cleanupInputText(rawText);
-      const payload = await withTimeout(runCleanupModel(rawText, env, model), cleanupTimeoutMs(env), `cleanup timed out after ${cleanupTimeoutMs(env)}ms`);
+      const inputText = cleanupInputText(rawText, dictionary);
+      const payload = await withTimeout(runCleanupModel(rawText, env, model, dictionary), cleanupTimeoutMs(env), `cleanup timed out after ${cleanupTimeoutMs(env)}ms`);
       const cleanedText = extractGeneratedText(payload);
       const validationError = validateCleanup(rawText, cleanedText);
       if (validationError) {
@@ -1226,7 +1263,8 @@ async function cleanupTranscript(rawText: string, tier: CleanupTier, env: Env): 
         inputTokens: cleanupUsage.inputTokens,
         outputTokens: cleanupUsage.outputTokens,
         estimatedTokens: cleanupUsage.estimatedTokens,
-        costMicroUsd: cleanupUsage.costMicroUsd
+        costMicroUsd: cleanupUsage.costMicroUsd,
+        dictionaryWarning
       };
     } catch (error) {
       failures.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
@@ -1238,15 +1276,16 @@ async function cleanupTranscript(rawText: string, tier: CleanupTier, env: Env): 
     model: models.at(-1),
     applied: false,
     fallbackUsed: models.length > 1,
-    warning: `Cleanup unavailable; pasted raw transcript. ${failures.join(" | ")}`
+    warning: `Cleanup unavailable; pasted raw transcript. ${failures.join(" | ")}`,
+    dictionaryWarning
   };
 }
 
-async function runCleanupModel(rawText: string, env: Env, model: string): Promise<unknown> {
+async function runCleanupModel(rawText: string, env: Env, model: string, dictionary: NormalizedDictionaryEntry[] = []): Promise<unknown> {
   return env.AI.run(model, {
     messages: [
       { role: "system", content: CLEANUP_SYSTEM_PROMPT },
-      { role: "user", content: cleanupInputText(rawText, false) }
+      { role: "user", content: cleanupInputText(rawText, dictionary, false) }
     ],
     temperature: 0,
     top_p: 0.2,
@@ -1254,9 +1293,110 @@ async function runCleanupModel(rawText: string, env: Env, model: string): Promis
   });
 }
 
-function cleanupInputText(rawText: string, includeSystem = true): string {
-  const userText = `${CLEANUP_USER_PROMPT}${rawText}${CLEANUP_USER_PROMPT_SUFFIX}`;
+export function cleanupInputText(rawText: string, dictionary: NormalizedDictionaryEntry[] = [], includeSystem = true): string {
+  const dictionaryText = dictionaryInputText(dictionary);
+  const userText = `${dictionaryText}${CLEANUP_USER_PROMPT}${rawText}${CLEANUP_USER_PROMPT_SUFFIX}`;
   return includeSystem ? `${CLEANUP_SYSTEM_PROMPT}\n${userText}` : userText;
+}
+
+function dictionaryInputText(dictionary: NormalizedDictionaryEntry[]): string {
+  if (dictionary.length === 0) return "";
+
+  const vocabulary = dictionary.filter((entry) => entry.kind === "vocabulary");
+  const replacements = dictionary.filter((entry) => entry.kind === "replacement");
+  const lines = ["<dictionary>"];
+
+  if (vocabulary.length > 0) {
+    lines.push("Vocabulary terms to preserve when context supports them:");
+    for (const entry of vocabulary) {
+      lines.push(`- ${escapeXml(entry.phrase)}`);
+    }
+    lines.push("");
+  }
+
+  if (replacements.length > 0) {
+    lines.push("Known speech-to-text corrections:");
+    for (const entry of replacements) {
+      lines.push(`- "${escapeXml(entry.phrase)}" => "${escapeXml(entry.replacement ?? "")}"`);
+    }
+  }
+
+  lines.push("</dictionary>", "");
+  return `${lines.join("\n")}\n`;
+}
+
+export function normalizeDictionaryPayload(input: FormDataEntryValue | unknown): NormalizedDictionaryPayload {
+  if (typeof input !== "string" || !input.trim()) {
+    return { entries: [] };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return { entries: [], warning: "Dictionary ignored: invalid JSON." };
+  }
+
+  const rawEntries = isRecord(parsed) && Array.isArray(parsed.entries) ? parsed.entries : Array.isArray(parsed) ? parsed : [];
+  const entries: NormalizedDictionaryEntry[] = [];
+  const vocabularyKeys = new Set<string>();
+  const replacementKeys = new Set<string>();
+  const sorted = [...rawEntries].sort((a, b) => {
+    const aTime = Date.parse(isRecord(a) && typeof a.updatedAt === "string" ? a.updatedAt : "");
+    const bTime = Date.parse(isRecord(b) && typeof b.updatedAt === "string" ? b.updatedAt : "");
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  });
+
+  for (const rawEntry of sorted) {
+    const entry = normalizeDictionaryEntry(rawEntry);
+    if (!entry) continue;
+
+    const key = entry.phrase.toLocaleLowerCase();
+    if (entry.kind === "vocabulary") {
+      if (vocabularyKeys.has(key)) continue;
+      vocabularyKeys.add(key);
+    } else {
+      if (replacementKeys.has(key)) continue;
+      replacementKeys.add(key);
+    }
+
+    entries.push(entry);
+    if (entries.length >= MAX_DICTIONARY_ENTRIES) break;
+  }
+
+  return {
+    entries,
+    warning: sorted.length > entries.length && entries.length >= MAX_DICTIONARY_ENTRIES ? `Dictionary truncated to ${MAX_DICTIONARY_ENTRIES} enabled entries.` : undefined
+  };
+}
+
+function normalizeDictionaryEntry(input: unknown): NormalizedDictionaryEntry | null {
+  if (!isRecord(input) || input.enabled === false) return null;
+  const kind = input.kind === "replacement" ? "replacement" : "vocabulary";
+  const phrase = normalizeDictionaryText(input.phrase, MAX_DICTIONARY_PHRASE_LENGTH);
+  const replacement = normalizeDictionaryText(input.replacement, MAX_DICTIONARY_REPLACEMENT_LENGTH);
+
+  if (!phrase) return null;
+  if (kind === "replacement") {
+    if (!replacement || phrase.toLocaleLowerCase() === replacement.toLocaleLowerCase()) return null;
+    return { kind, phrase, replacement };
+  }
+
+  return { kind, phrase };
+}
+
+function normalizeDictionaryText(value: unknown, maxLength: number): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength).trim();
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export function calculateTranscriptionUsageCost(durationMs: number, env?: Pick<Env, "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE">): number {

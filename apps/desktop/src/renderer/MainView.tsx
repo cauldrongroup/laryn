@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   ClipboardCopy,
+  BookOpenText,
+  Edit3,
   ExternalLink,
   History,
   KeyRound,
@@ -11,12 +13,13 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Plus,
   Square,
   Trash2,
   UserRound,
   X
 } from "lucide-react";
-import type { CleanupTier, HistoryEntry } from "@laryn/shared";
+import type { CleanupTier, DictionaryEntry, HistoryEntry } from "@laryn/shared";
 import type { DesktopStatus } from "../preload/preload";
 import {
   audioInputLabel,
@@ -62,8 +65,12 @@ export default function MainView() {
     audioInputs,
     selectedAudioInputId,
     cleanupTier,
+    dictionary,
     selectAudioInput,
     selectCleanupTier,
+    saveDictionaryEntry,
+    deleteDictionaryEntry,
+    toggleDictionaryEntry,
     requestMicrophoneAndRefresh,
     stopRecording,
     setStatus
@@ -176,6 +183,7 @@ export default function MainView() {
           status={status}
           hotkey={hotkey}
           cleanupTier={cleanupTier}
+          dictionary={dictionary}
           audioInputs={audioInputs}
           selectedAudioInputId={selectedAudioInputId}
           deviceLoginError={deviceLoginError}
@@ -183,6 +191,9 @@ export default function MainView() {
           recordingControlsDisabled={recordingControlsDisabled}
           onClose={() => setSettingsOpen(false)}
           onSelectCleanupTier={selectCleanupTier}
+          onSaveDictionaryEntry={saveDictionaryEntry}
+          onDeleteDictionaryEntry={deleteDictionaryEntry}
+          onToggleDictionaryEntry={toggleDictionaryEntry}
           onSelectAudioInput={selectAudioInput}
           onRefreshInputs={() => void requestMicrophoneAndRefresh()}
           onCheckWorker={() => void window.laryn.checkWorker().then(setStatus)}
@@ -832,6 +843,7 @@ function SettingsDrawer({
   status,
   hotkey,
   cleanupTier,
+  dictionary,
   audioInputs,
   selectedAudioInputId,
   deviceLoginError,
@@ -839,6 +851,9 @@ function SettingsDrawer({
   recordingControlsDisabled,
   onClose,
   onSelectCleanupTier,
+  onSaveDictionaryEntry,
+  onDeleteDictionaryEntry,
+  onToggleDictionaryEntry,
   onSelectAudioInput,
   onRefreshInputs,
   onCheckWorker,
@@ -850,6 +865,7 @@ function SettingsDrawer({
   status: DesktopStatus;
   hotkey: string;
   cleanupTier: CleanupTier;
+  dictionary: DictionaryEntry[];
   audioInputs: MediaDeviceInfo[];
   selectedAudioInputId: string;
   deviceLoginError: string;
@@ -857,6 +873,9 @@ function SettingsDrawer({
   recordingControlsDisabled: boolean;
   onClose: () => void;
   onSelectCleanupTier: (tier: CleanupTier) => void;
+  onSaveDictionaryEntry: (entry: Partial<DictionaryEntry>) => Promise<void>;
+  onDeleteDictionaryEntry: (id: string) => Promise<void>;
+  onToggleDictionaryEntry: (id: string, enabled: boolean) => Promise<void>;
   onSelectAudioInput: (deviceId: string) => void;
   onRefreshInputs: () => void;
   onCheckWorker: () => void;
@@ -912,6 +931,15 @@ function SettingsDrawer({
           cleanupTier={cleanupTier}
           recordingControlsDisabled={recordingControlsDisabled}
           onSelectCleanupTier={onSelectCleanupTier}
+        />
+
+        <SectionDictionary
+          cleanupTier={cleanupTier}
+          dictionary={dictionary}
+          recordingControlsDisabled={recordingControlsDisabled}
+          onSaveEntry={onSaveDictionaryEntry}
+          onDeleteEntry={onDeleteDictionaryEntry}
+          onToggleEntry={onToggleDictionaryEntry}
         />
 
         <SectionHotkey
@@ -1233,6 +1261,269 @@ function SectionCleanup({
             ) : null}
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function SectionDictionary({
+  cleanupTier,
+  dictionary,
+  recordingControlsDisabled,
+  onSaveEntry,
+  onDeleteEntry,
+  onToggleEntry
+}: {
+  cleanupTier: CleanupTier;
+  dictionary: DictionaryEntry[];
+  recordingControlsDisabled: boolean;
+  onSaveEntry: (entry: Partial<DictionaryEntry>) => Promise<void>;
+  onDeleteEntry: (id: string) => Promise<void>;
+  onToggleEntry: (id: string, enabled: boolean) => Promise<void>;
+}) {
+  const [query, setQuery] = useState("");
+  const [vocabularyPhrase, setVocabularyPhrase] = useState("");
+  const [misheardPhrase, setMisheardPhrase] = useState("");
+  const [replacementPhrase, setReplacementPhrase] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const editingEntry = dictionary.find((entry) => entry.id === editingId) || null;
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filteredEntries = normalizedQuery
+    ? dictionary.filter((entry) =>
+        [entry.phrase, entry.replacement ?? "", entry.kind].some((value) =>
+          value.toLocaleLowerCase().includes(normalizedQuery)
+        )
+      )
+    : dictionary;
+
+  useEffect(() => {
+    if (!editingEntry) return;
+    if (editingEntry.kind === "replacement") {
+      setMisheardPhrase(editingEntry.phrase);
+      setReplacementPhrase(editingEntry.replacement ?? "");
+      setVocabularyPhrase("");
+    } else {
+      setVocabularyPhrase(editingEntry.phrase);
+      setMisheardPhrase("");
+      setReplacementPhrase("");
+    }
+  }, [editingEntry]);
+
+  async function saveVocabulary() {
+    setError("");
+    try {
+      await onSaveEntry({
+        id: editingEntry?.kind === "vocabulary" ? editingEntry.id : undefined,
+        kind: "vocabulary",
+        phrase: vocabularyPhrase,
+        enabled: editingEntry?.enabled ?? true
+      });
+      setVocabularyPhrase("");
+      setEditingId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  }
+
+  async function saveReplacement() {
+    setError("");
+    try {
+      await onSaveEntry({
+        id: editingEntry?.kind === "replacement" ? editingEntry.id : undefined,
+        kind: "replacement",
+        phrase: misheardPhrase,
+        replacement: replacementPhrase,
+        enabled: editingEntry?.enabled ?? true
+      });
+      setMisheardPhrase("");
+      setReplacementPhrase("");
+      setEditingId(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    }
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setVocabularyPhrase("");
+    setMisheardPhrase("");
+    setReplacementPhrase("");
+    setError("");
+  }
+
+  return (
+    <section className="grid gap-3">
+      <SectionIntro
+        title="Dictionary"
+        caption="Help cleanup preserve names, acronyms, product terms, and recurring misheard phrases."
+      />
+      <div className="panel-soft grid gap-3 p-3">
+        <div className="flex items-center gap-2 text-xs text-[color:var(--color-text-mute)]">
+          <BookOpenText size={14} />
+          <span>
+            Dictionary entries are used when cleanup is Cheap, Standard, or Premium.
+          </span>
+        </div>
+        {cleanupTier === "off" ? (
+          <p className="m-0 text-xs text-[color:var(--color-warn)]">
+            Cleanup is off, so dictionary entries will not be sent with dictation.
+          </p>
+        ) : null}
+
+        <div className="grid gap-2">
+          <label className="text-xs font-medium text-[color:var(--color-text-soft)]" htmlFor="dictionary-vocabulary">
+            Word or phrase
+          </label>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <input
+              id="dictionary-vocabulary"
+              className="form-input"
+              value={vocabularyPhrase}
+              disabled={recordingControlsDisabled}
+              maxLength={60}
+              placeholder="Laryn"
+              spellCheck={false}
+              onChange={(event) => setVocabularyPhrase(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && vocabularyPhrase.trim()) void saveVocabulary();
+              }}
+            />
+            <button
+              className="btn btn-secondary px-2.5"
+              type="button"
+              disabled={recordingControlsDisabled || !vocabularyPhrase.trim()}
+              onClick={() => void saveVocabulary()}
+              title={editingEntry?.kind === "vocabulary" ? "Save vocabulary" : "Add vocabulary"}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <label className="text-xs font-medium text-[color:var(--color-text-soft)]" htmlFor="dictionary-misheard">
+            Replacement rule
+          </label>
+          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+            <input
+              id="dictionary-misheard"
+              className="form-input"
+              value={misheardPhrase}
+              disabled={recordingControlsDisabled}
+              maxLength={60}
+              placeholder="Whisper hears"
+              spellCheck={false}
+              onChange={(event) => setMisheardPhrase(event.target.value)}
+            />
+            <input
+              className="form-input"
+              value={replacementPhrase}
+              disabled={recordingControlsDisabled}
+              maxLength={120}
+              placeholder="Use instead"
+              spellCheck={false}
+              onChange={(event) => setReplacementPhrase(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && misheardPhrase.trim() && replacementPhrase.trim()) void saveReplacement();
+              }}
+            />
+            <button
+              className="btn btn-secondary px-2.5"
+              type="button"
+              disabled={recordingControlsDisabled || !misheardPhrase.trim() || !replacementPhrase.trim()}
+              onClick={() => void saveReplacement()}
+              title={editingEntry?.kind === "replacement" ? "Save replacement" : "Add replacement"}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        </div>
+
+        {editingEntry ? (
+          <button className="btn btn-ghost justify-self-start px-2.5 py-1.5 text-xs" type="button" onClick={cancelEdit}>
+            <X size={13} />
+            Cancel edit
+          </button>
+        ) : null}
+        {error ? <p className="m-0 text-xs text-[color:var(--color-bad)]">{error}</p> : null}
+      </div>
+
+      <div className="grid gap-2">
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[color:var(--color-text-mute)]" />
+          <input
+            className="form-input pl-8"
+            type="search"
+            value={query}
+            placeholder="Search dictionary"
+            aria-label="Search dictionary"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+
+        <div className="grid max-h-72 gap-2 overflow-auto pr-1">
+          {filteredEntries.length === 0 ? (
+            <div className="panel-soft p-3 text-sm text-[color:var(--color-text-mute)]">
+              Add terms Laryn should recognize during cleanup.
+            </div>
+          ) : (
+            filteredEntries.map((entry) => (
+              <div key={entry.id} className="panel-soft grid gap-2 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--color-text-mute)]">
+                        {entry.kind === "replacement" ? "Rule" : "Term"}
+                      </span>
+                      <strong className="truncate text-sm text-white" title={entry.phrase}>
+                        {entry.phrase}
+                      </strong>
+                    </div>
+                    {entry.kind === "replacement" ? (
+                      <p className="m-0 mt-1 truncate text-xs text-[color:var(--color-text-soft)]" title={entry.replacement}>
+                        Use instead: {entry.replacement}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      className="icon-btn-sm"
+                      type="button"
+                      aria-label={entry.enabled ? "Disable dictionary entry" : "Enable dictionary entry"}
+                      title={entry.enabled ? "Disable" : "Enable"}
+                      disabled={recordingControlsDisabled}
+                      onClick={() => void onToggleEntry(entry.id, !entry.enabled)}
+                    >
+                      {entry.enabled ? <CheckCircle2 size={15} /> : <Square size={15} />}
+                    </button>
+                    <button
+                      className="icon-btn-sm"
+                      type="button"
+                      aria-label="Edit dictionary entry"
+                      title="Edit"
+                      disabled={recordingControlsDisabled}
+                      onClick={() => setEditingId(entry.id)}
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      className="icon-btn-sm icon-btn-close"
+                      type="button"
+                      aria-label="Delete dictionary entry"
+                      title="Delete"
+                      disabled={recordingControlsDisabled}
+                      onClick={() => void onDeleteEntry(entry.id)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </section>
   );

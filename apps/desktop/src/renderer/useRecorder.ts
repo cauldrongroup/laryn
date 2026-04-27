@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CleanupTier } from "@laryn/shared";
+import type { CleanupTier, DictionaryEntry } from "@laryn/shared";
 import type { DesktopStatus } from "../preload/preload";
 
 export type RecorderState = "idle" | "recording" | "transcribing" | "error";
@@ -43,9 +43,11 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
   const [selectedAudioInputId, setSelectedAudioInputId] = useState<string>(() => readAudioInputId());
   const [cleanupTier, setCleanupTier] = useState<CleanupTier>(() => readCleanupTier());
+  const [dictionary, setDictionary] = useState<DictionaryEntry[]>([]);
   const [elapsedMs, setElapsedMs] = useState(0);
 
   const cleanupTierRef = useRef(cleanupTier);
+  const dictionaryRef = useRef(dictionary);
   const selectedAudioInputIdRef = useRef(selectedAudioInputId);
   const onWaveformSampleRef = useRef(onWaveformSample);
   const onWaveformResetRef = useRef(onWaveformReset);
@@ -63,6 +65,10 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   useEffect(() => {
     cleanupTierRef.current = cleanupTier;
   }, [cleanupTier]);
+
+  useEffect(() => {
+    dictionaryRef.current = dictionary;
+  }, [dictionary]);
 
   useEffect(() => {
     selectedAudioInputIdRef.current = selectedAudioInputId;
@@ -83,6 +89,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     });
     void window.laryn.checkWorker().then((next) => {
       if (mounted) setStatus(next);
+    });
+    void window.laryn.listDictionary().then((entries) => {
+      if (mounted) setDictionary(entries);
     });
     void refreshAudioInputs();
 
@@ -216,7 +225,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
     const buffer = await blob.arrayBuffer();
     try {
-      await window.laryn.transcribeAudio(buffer, mimeType, durationMs, cleanupTierRef.current);
+      const selectedCleanupTier = cleanupTierRef.current;
+      const enabledDictionary = selectedCleanupTier === "off" ? undefined : dictionaryRef.current.filter((entry) => entry.enabled);
+      await window.laryn.transcribeAudio(buffer, mimeType, durationMs, selectedCleanupTier, enabledDictionary);
       setRecorderState("idle");
       recorder.current = null;
     } catch (error) {
@@ -285,6 +296,21 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     localStorage.setItem("laryn.cleanupTierDefaultVersion", CLEANUP_TIER_DEFAULT_VERSION);
   }
 
+  async function saveDictionaryEntry(entry: Partial<DictionaryEntry>) {
+    const next = await window.laryn.saveDictionaryEntry(entry);
+    setDictionary(next);
+  }
+
+  async function deleteDictionaryEntry(id: string) {
+    const next = await window.laryn.deleteDictionaryEntry(id);
+    setDictionary(next);
+  }
+
+  async function toggleDictionaryEntry(id: string, enabled: boolean) {
+    const next = await window.laryn.toggleDictionaryEntry(id, enabled);
+    setDictionary(next);
+  }
+
   const flowState: FlowState =
     recorderState === "recording"
       ? "recording"
@@ -302,10 +328,14 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     audioInputs,
     selectedAudioInputId,
     cleanupTier,
+    dictionary,
     startRecording,
     stopRecording,
     selectAudioInput,
     selectCleanupTier,
+    saveDictionaryEntry,
+    deleteDictionaryEntry,
+    toggleDictionaryEntry,
     requestMicrophoneAndRefresh,
     refreshAudioInputs,
     setStatus

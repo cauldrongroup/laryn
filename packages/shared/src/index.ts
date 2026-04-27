@@ -1,5 +1,23 @@
 export type CleanupTier = "off" | "cheap" | "standard" | "premium";
 
+export type DictionaryEntryKind = "vocabulary" | "replacement";
+
+export type DictionaryEntry = {
+  id: string;
+  kind: DictionaryEntryKind;
+  phrase: string;
+  replacement?: string;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  useCount?: number;
+};
+
+export type DictionaryPayload = {
+  version: 1;
+  entries: DictionaryEntry[];
+};
+
 export type AccountBillingStatus = {
   proActive: boolean;
   subscriptionStatus: "active" | "trialing" | "past_due" | "canceled" | "revoked" | "inactive" | "unknown";
@@ -65,6 +83,7 @@ export type TranscriptionRequestMeta = {
   mimeType: string;
   durationMs?: number;
   cleanupTier?: CleanupTier;
+  dictionary?: DictionaryPayload;
 };
 
 export type TranscriptionResponse = {
@@ -77,6 +96,9 @@ export type TranscriptionResponse = {
   cleanupTier: CleanupTier;
   cleanupWarning?: string;
   fallbackUsed?: boolean;
+  dictionaryApplied?: boolean;
+  dictionaryEntryCount?: number;
+  dictionaryWarning?: string;
   wordCount: number;
   durationMs: number;
   transcriptionProvider?: string;
@@ -109,6 +131,9 @@ export type HistoryEntry = {
   cleanupModel?: string;
   cleanupWarning?: string;
   fallbackUsed?: boolean;
+  dictionaryApplied?: boolean;
+  dictionaryEntryCount?: number;
+  dictionaryWarning?: string;
   wordCount: number;
   durationMs: number;
   transcriptionModel?: string;

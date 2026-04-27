@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { CleanupTier, HistoryEntry, TranscriptionResponse } from "@laryn/shared";
+import type { CleanupTier, DictionaryEntry, HistoryEntry, TranscriptionResponse } from "@laryn/shared";
 
 contextBridge.exposeInMainWorld("laryn", {
   ready: () => ipcRenderer.invoke("renderer:ready"),
@@ -17,11 +17,15 @@ contextBridge.exposeInMainWorld("laryn", {
   recordingStopped: () => ipcRenderer.send("recording:stopped"),
   recordingCancelled: (message: string) => ipcRenderer.send("recording:cancelled", message),
   recordingFailed: (message: string) => ipcRenderer.send("recording:failed", message),
-  transcribeAudio: (audio: ArrayBuffer, mimeType: string, durationMs: number, cleanupTier: CleanupTier) =>
-    ipcRenderer.invoke("transcription:submit", audio, mimeType, durationMs, cleanupTier),
+  transcribeAudio: (audio: ArrayBuffer, mimeType: string, durationMs: number, cleanupTier: CleanupTier, dictionary?: DictionaryEntry[]) =>
+    ipcRenderer.invoke("transcription:submit", audio, mimeType, durationMs, cleanupTier, dictionary),
   listHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:list"),
   deleteHistoryEntry: (id: string): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:delete", id),
   clearHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:clear"),
+  listDictionary: (): Promise<DictionaryEntry[]> => ipcRenderer.invoke("dictionary:list"),
+  saveDictionaryEntry: (entry: Partial<DictionaryEntry>): Promise<DictionaryEntry[]> => ipcRenderer.invoke("dictionary:save", entry),
+  deleteDictionaryEntry: (id: string): Promise<DictionaryEntry[]> => ipcRenderer.invoke("dictionary:delete", id),
+  toggleDictionaryEntry: (id: string, enabled: boolean): Promise<DictionaryEntry[]> => ipcRenderer.invoke("dictionary:toggle", id, enabled),
   copyToClipboard: (text: string) => ipcRenderer.send("history:copy", text),
   onStartRecording: (callback: () => void) => {
     const listener = () => callback();

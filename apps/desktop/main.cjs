@@ -23,7 +23,9 @@ let logFilePath = null;
 let authFilePath = null;
 let historyFilePath = null;
 let settingsFilePath = null;
+let dictionaryFilePath = null;
 let historyCache = null;
+let dictionaryCache = null;
 let desktopSettings = {
   hotkey: config.hotkey
 };
@@ -36,6 +38,11 @@ let desktopAuth = {
 let authGeneration = 0;
 
 const MAX_HISTORY_ENTRIES = 500;
+const DICTIONARY_VERSION = 1;
+const MAX_DICTIONARY_ENTRIES = 1000;
+const MAX_DICTIONARY_SEND_ENTRIES = 200;
+const MAX_DICTIONARY_PHRASE_LENGTH = 60;
+const MAX_DICTIONARY_REPLACEMENT_LENGTH = 120;
 
 const hotkeyState = {
   ctrlDown: false,
@@ -84,12 +91,14 @@ app.whenReady().then(() => {
   loadDesktopSettings();
   loadDesktopAuth();
   loadHistory();
+  loadDictionary();
   logInfo("app:ready", {
     workerUrl: config.workerUrl,
     rendererUrl: config.rendererUrl || "packaged",
     hasDesktopToken: Boolean(desktopAuth.token),
     cleanupTier,
-    historyCount: historyCache?.length ?? 0
+    historyCount: historyCache?.length ?? 0,
+    dictionaryCount: dictionaryCache?.length ?? 0
   });
   configureMediaPermissions();
   createWindow();
@@ -390,25 +399,40 @@ function registerIpc() {
     clearHistory();
     return [];
   });
+  ipcMain.handle("dictionary:list", () => {
+    if (!dictionaryCache) loadDictionary();
+    return dictionaryCache || [];
+  });
+  ipcMain.handle("dictionary:save", (_event, entry) => saveDictionaryEntry(entry));
+  ipcMain.handle("dictionary:delete", (_event, id) => {
+    deleteDictionaryEntry(id);
+    return dictionaryCache || [];
+  });
+  ipcMain.handle("dictionary:toggle", (_event, id, enabled) => {
+    toggleDictionaryEntry(id, enabled);
+    return dictionaryCache || [];
+  });
   ipcMain.on("history:copy", (_event, text) => {
     if (typeof text === "string") {
       clipboard.writeText(text);
       logInfo("history:copy", { textLength: text.length });
     }
   });
-  ipcMain.handle("transcription:submit", async (_event, audio, mimeType, durationMs, requestedCleanupTier) => {
+  ipcMain.handle("transcription:submit", async (_event, audio, mimeType, durationMs, requestedCleanupTier, dictionary) => {
     cleanupTier = normalizeCleanupTier(requestedCleanupTier);
+    const requestDictionary = cleanupTier === "off" ? [] : dictionaryEntriesForRequest(dictionary);
     logInfo("transcription:submit:start", {
       audioBytes: audio?.byteLength ?? audio?.length ?? null,
       mimeType,
       durationMs,
       requestedCleanupTier,
-      cleanupTier
+      cleanupTier,
+      dictionaryEntryCount: requestDictionary.length
     });
 
     let result;
     try {
-      result = await transcribe(audio, mimeType, durationMs, cleanupTier);
+      result = await transcribe(audio, mimeType, durationMs, cleanupTier, requestDictionary);
     } catch (error) {
       logError("transcription:submit:failed", error);
       exitDictationWindowMode();
@@ -765,7 +789,7 @@ async function stopRecording() {
   await sendToDictationWindow("recording:stop");
 }
 
-async function transcribe(audio, mimeType, durationMs, selectedCleanupTier) {
+async function transcribe(audio, mimeType, durationMs, selectedCleanupTier, dictionaryEntries = []) {
   if (!canRecord()) {
     logInfo("transcribe:refresh-auth-before-submit", {
       authStatus: status.authStatus,
@@ -789,6 +813,9 @@ async function transcribe(audio, mimeType, durationMs, selectedCleanupTier) {
   form.append("audio", new Blob([audio], { type: mimeType }), `laryn-${Date.now()}.webm`);
   form.append("durationMs", String(durationMs));
   form.append("cleanupTier", selectedCleanupTier);
+  if (selectedCleanupTier !== "off" && dictionaryEntries.length > 0) {
+    form.append("dictionary", JSON.stringify({ version: DICTIONARY_VERSION, entries: dictionaryEntries }));
+  }
 
   const url = `${config.workerUrl}/v1/transcriptions`;
   const startedAt = Date.now();
@@ -797,7 +824,8 @@ async function transcribe(audio, mimeType, durationMs, selectedCleanupTier) {
     audioBytes: audio?.byteLength ?? audio?.length ?? null,
     mimeType,
     durationMs,
-    cleanupTier: selectedCleanupTier
+    cleanupTier: selectedCleanupTier,
+    dictionaryEntryCount: selectedCleanupTier === "off" ? 0 : dictionaryEntries.length
   });
 
   const response = await fetch(url, {
@@ -1391,6 +1419,7 @@ function configureLogging() {
   authFilePath = path.join(app.getPath("userData"), "desktop-auth.json");
   historyFilePath = path.join(app.getPath("userData"), "history.json");
   settingsFilePath = path.join(app.getPath("userData"), "settings.json");
+  dictionaryFilePath = path.join(app.getPath("userData"), "dictionary.json");
   logInfo("logging:ready", { logFilePath });
 }
 
@@ -1450,6 +1479,164 @@ function saveHistory() {
   }
 }
 
+function loadDictionary() {
+  if (!dictionaryFilePath) {
+    dictionaryCache = [];
+    return;
+  }
+
+  try {
+    if (!fs.existsSync(dictionaryFilePath)) {
+      dictionaryCache = [];
+      return;
+    }
+
+    const raw = fs.readFileSync(dictionaryFilePath, "utf8");
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed?.entries) ? parsed.entries : Array.isArray(parsed) ? parsed : [];
+    dictionaryCache = normalizeDictionaryEntries(entries, { maxEntries: MAX_DICTIONARY_ENTRIES, allowDisabled: true }).entries;
+  } catch (error) {
+    logWarn("dictionary:load-failed", { error: formatErrorForLog(error) });
+    dictionaryCache = [];
+  }
+}
+
+function saveDictionary() {
+  if (!dictionaryFilePath || !dictionaryCache) return;
+
+  try {
+    fs.writeFileSync(dictionaryFilePath, JSON.stringify({ version: DICTIONARY_VERSION, entries: dictionaryCache }, null, 2), "utf8");
+  } catch (error) {
+    logWarn("dictionary:save-failed", { error: formatErrorForLog(error) });
+  }
+}
+
+function saveDictionaryEntry(entry) {
+  if (!dictionaryCache) loadDictionary();
+  const now = new Date().toISOString();
+  const existing =
+    entry && typeof entry.id === "string"
+      ? dictionaryCache.find((candidate) => candidate.id === entry.id)
+      : null;
+  const candidate = {
+    id: existing?.id || generateDictionaryId(),
+    kind: entry?.kind === "replacement" ? "replacement" : "vocabulary",
+    phrase: entry?.phrase,
+    replacement: entry?.replacement,
+    enabled: typeof entry?.enabled === "boolean" ? entry.enabled : existing?.enabled !== false,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    useCount: typeof existing?.useCount === "number" ? existing.useCount : 0
+  };
+  const normalized = normalizeDictionaryEntry(candidate);
+  if (!normalized) {
+    throw new Error("Dictionary entry is invalid.");
+  }
+
+  const next = [normalized, ...dictionaryCache.filter((item) => item.id !== normalized.id)];
+  const result = normalizeDictionaryEntries(next, { maxEntries: MAX_DICTIONARY_ENTRIES, allowDisabled: true });
+  dictionaryCache = result.entries;
+  saveDictionary();
+  logInfo("dictionary:save", { id: normalized.id, kind: normalized.kind, enabled: normalized.enabled, count: dictionaryCache.length });
+  return dictionaryCache;
+}
+
+function deleteDictionaryEntry(id) {
+  if (!dictionaryCache) loadDictionary();
+  if (typeof id !== "string") return;
+  const before = dictionaryCache.length;
+  dictionaryCache = dictionaryCache.filter((entry) => entry.id !== id);
+  if (dictionaryCache.length !== before) {
+    saveDictionary();
+    logInfo("dictionary:delete", { id, remaining: dictionaryCache.length });
+  }
+}
+
+function toggleDictionaryEntry(id, enabled) {
+  if (!dictionaryCache) loadDictionary();
+  if (typeof id !== "string") return;
+  let changed = false;
+  dictionaryCache = dictionaryCache.map((entry) => {
+    if (entry.id !== id) return entry;
+    changed = true;
+    return { ...entry, enabled: Boolean(enabled), updatedAt: new Date().toISOString() };
+  });
+  const result = normalizeDictionaryEntries(dictionaryCache, { maxEntries: MAX_DICTIONARY_ENTRIES, allowDisabled: true });
+  dictionaryCache = result.entries;
+  if (changed) {
+    saveDictionary();
+    logInfo("dictionary:toggle", { id, enabled: Boolean(enabled) });
+  }
+}
+
+function dictionaryEntriesForRequest(input) {
+  const source = Array.isArray(input) ? input : dictionaryCache || [];
+  const result = normalizeDictionaryEntries(source, { maxEntries: MAX_DICTIONARY_SEND_ENTRIES, allowDisabled: false });
+  return result.entries;
+}
+
+function normalizeDictionaryEntries(entries, options = {}) {
+  const maxEntries = options.maxEntries || MAX_DICTIONARY_SEND_ENTRIES;
+  const allowDisabled = options.allowDisabled !== false;
+  const normalized = [];
+  const vocabularyKeys = new Set();
+  const replacementKeys = new Set();
+  const sorted = [...(Array.isArray(entries) ? entries : [])].sort((a, b) => {
+    const aTime = Date.parse(typeof a?.updatedAt === "string" ? a.updatedAt : "");
+    const bTime = Date.parse(typeof b?.updatedAt === "string" ? b.updatedAt : "");
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
+  });
+
+  for (const entry of sorted) {
+    const next = normalizeDictionaryEntry(entry);
+    if (!next) continue;
+    if (!allowDisabled && !next.enabled) continue;
+
+    const phraseKey = next.phrase.toLocaleLowerCase();
+    if (next.kind === "vocabulary") {
+      if (next.enabled && vocabularyKeys.has(phraseKey)) continue;
+      if (next.enabled) vocabularyKeys.add(phraseKey);
+    } else {
+      if (next.enabled && replacementKeys.has(phraseKey)) continue;
+      if (next.enabled) replacementKeys.add(phraseKey);
+    }
+
+    normalized.push(next);
+    if (normalized.length >= maxEntries) break;
+  }
+
+  return {
+    entries: normalized,
+    truncated: sorted.length > normalized.length && normalized.length >= maxEntries
+  };
+}
+
+function normalizeDictionaryEntry(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const kind = entry.kind === "replacement" ? "replacement" : "vocabulary";
+  const phrase = normalizeDictionaryText(entry.phrase, MAX_DICTIONARY_PHRASE_LENGTH);
+  const replacement = normalizeDictionaryText(entry.replacement, MAX_DICTIONARY_REPLACEMENT_LENGTH);
+  if (!phrase) return null;
+  if (kind === "replacement" && (!replacement || phrase.toLocaleLowerCase() === replacement.toLocaleLowerCase())) return null;
+  const now = new Date().toISOString();
+
+  return {
+    id: typeof entry.id === "string" && entry.id ? entry.id : generateDictionaryId(),
+    kind,
+    phrase,
+    replacement: kind === "replacement" ? replacement : undefined,
+    enabled: entry.enabled !== false,
+    createdAt: typeof entry.createdAt === "string" && entry.createdAt ? entry.createdAt : now,
+    updatedAt: typeof entry.updatedAt === "string" && entry.updatedAt ? entry.updatedAt : now,
+    useCount: typeof entry.useCount === "number" && Number.isFinite(entry.useCount) ? Math.max(0, Math.floor(entry.useCount)) : 0
+  };
+}
+
+function normalizeDictionaryText(value, maxLength) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength).trim();
+}
+
 function isValidHistoryEntry(entry) {
   return Boolean(
     entry &&
@@ -1487,6 +1674,9 @@ function appendHistoryEntry(transcript, durationFallbackMs) {
     cleanupModel: typeof transcript?.cleanupModel === "string" ? transcript.cleanupModel : undefined,
     cleanupWarning: typeof transcript?.cleanupWarning === "string" ? transcript.cleanupWarning : undefined,
     fallbackUsed: Boolean(transcript?.fallbackUsed),
+    dictionaryApplied: typeof transcript?.dictionaryApplied === "boolean" ? transcript.dictionaryApplied : undefined,
+    dictionaryEntryCount: typeof transcript?.dictionaryEntryCount === "number" ? transcript.dictionaryEntryCount : undefined,
+    dictionaryWarning: typeof transcript?.dictionaryWarning === "string" ? transcript.dictionaryWarning : undefined,
     wordCount,
     durationMs,
     transcriptionModel:
@@ -1529,6 +1719,10 @@ function broadcastHistoryChanged() {
 
 function generateLocalHistoryId() {
   return `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function generateDictionaryId() {
+  return `dict-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function loadDesktopAuth() {
