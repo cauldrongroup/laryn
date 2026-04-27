@@ -20,6 +20,8 @@ const INITIAL_STATUS: DesktopStatus = {
     mode: "error"
   },
   isRecording: false,
+  updateStatus: "idle",
+  updateMessage: "Updates check automatically after startup",
   state: "idle",
   message: "Starting",
   releaseName: "local-dev",
@@ -388,7 +390,7 @@ export function selectedAudioInputName(devices: MediaDeviceInfo[], selectedDevic
 export function cleanupModelLabel(tier: CleanupTier): string {
   if (tier === "off") return "No cleanup";
   if (tier === "cheap") return "Llama 1B";
-  if (tier === "premium") return "Llama 8B Fast";
+  if (tier === "premium") return "Gemma 4 26B";
   return "Llama 3B";
 }
 

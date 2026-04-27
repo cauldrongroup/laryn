@@ -43,6 +43,7 @@ export interface Env {
   PUBLIC_APP_URL?: string;
   LARYN_INCLUDED_CREDIT_UNITS?: string;
   LARYN_POLAR_UNIT_MICRO_USD?: string;
+  LARYN_UPDATE_BASE_URL?: string;
   LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE?: string;
   TRANSCRIPTION_PROVIDER?: string;
   TRANSCRIPTION_LANGUAGE?: string;
@@ -91,7 +92,7 @@ const GROQ_TRANSCRIPTION_MODEL = "whisper-large-v3-turbo";
 const CHEAP_CLEANUP_MODEL = "@cf/meta/llama-3.2-1b-instruct";
 const STANDARD_CLEANUP_MODEL = "@cf/meta/llama-3.2-3b-instruct";
 const FALLBACK_CLEANUP_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
-const PREMIUM_CLEANUP_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const PREMIUM_CLEANUP_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const DEFAULT_CLEANUP_TIER: CleanupTier = "off";
 const DEFAULT_CLEANUP_TIMEOUT_MS = 3_500;
 const DEFAULT_POLAR_USAGE_EVENT_NAME = "laryn-usage";
@@ -125,6 +126,10 @@ const WORKERS_AI_TEXT_MODEL_PRICING: Record<string, { inputMicroUsdPerMillionTok
   "@cf/meta/llama-3.1-8b-instruct-fp8-fast": {
     inputMicroUsdPerMillionTokens: 45_000,
     outputMicroUsdPerMillionTokens: 384_000
+  },
+  "@cf/google/gemma-4-26b-a4b-it": {
+    inputMicroUsdPerMillionTokens: 100_000,
+    outputMicroUsdPerMillionTokens: 300_000
   }
 };
 const CLEANUP_SYSTEM_PROMPT = `You are a dictation repair filter, not a chat assistant.
@@ -182,9 +187,26 @@ app.use(
   })
 );
 
+const noStoreMarketingHtml = async (c: { header: (name: string, value: string) => void }, next: () => Promise<void>) => {
+  await next();
+  c.header("cache-control", "no-store");
+};
+
+app.use("/", noStoreMarketingHtml);
+app.use("/pricing", noStoreMarketingHtml);
+app.use("/download", noStoreMarketingHtml);
+
 app.get("/", (c) => c.html(renderMarketingPage(c.env, "home")));
 app.get("/pricing", (c) => c.html(renderMarketingPage(c.env, "pricing")));
 app.get("/download", (c) => c.html(renderMarketingPage(c.env, "download")));
+app.get("/downloads/laryn-windows-latest.exe", async (c) => {
+  const installerUrl = await latestWindowsInstallerUrl(c.env);
+  if (!installerUrl) {
+    return c.text("Latest Windows installer is not available yet.", 503);
+  }
+
+  return c.redirect(installerUrl, 302);
+});
 app.get("/app", (c) => c.html(renderDashboardPage()));
 app.get("/app/*", (c) => c.html(renderDashboardPage()));
 
@@ -1973,7 +1995,7 @@ function downloadBody(appUrl: string): string {
       <div class="page-shell hero-shell-centered">
         <p class="eyebrow"><span class="eyebrow-dot"></span>Download · Windows 10 + 11</p>
         <h1>Get Laryn for Windows.</h1>
-        <p class="lede">A 30 MB installer. No drivers, no admin gymnastics — sign in once and you're dictating into any focused app.</p>
+        <p class="lede">A Windows installer with no drivers or admin gymnastics — sign in once and you're dictating into any focused app.</p>
         <div class="hero-actions hero-actions-centered">
           <a class="btn btn-primary btn-lg" href="${appUrl}/downloads/laryn-windows-latest.exe">Download for Windows · .exe</a>
           <a class="link-action" href="${appUrl}/app"><span>Open account first</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
@@ -2015,7 +2037,7 @@ function downloadBody(appUrl: string): string {
             <div class="spec-row"><dt>OS</dt><dd>Windows 10 1903+ or Windows 11</dd></div>
             <div class="spec-row"><dt>Architecture</dt><dd>x64</dd></div>
             <div class="spec-row"><dt>RAM</dt><dd>4 GB minimum, 8 GB recommended</dd></div>
-            <div class="spec-row"><dt>Disk</dt><dd>120 MB after install</dd></div>
+            <div class="spec-row"><dt>Disk</dt><dd>Several hundred MB after install</dd></div>
             <div class="spec-row"><dt>Mic</dt><dd>Any input recognized by Windows</dd></div>
             <div class="spec-row"><dt>Network</dt><dd>Internet for transcription</dd></div>
           </dl>
@@ -3246,6 +3268,48 @@ function betterAuthUrl(env: Env): string {
 
 function publicAppUrl(env: Env): string {
   return (env.PUBLIC_APP_URL || env.BETTER_AUTH_URL || "http://localhost:8787").replace(/\/$/, "");
+}
+
+function updateBaseUrl(env: Pick<Env, "LARYN_UPDATE_BASE_URL">): string {
+  return (env.LARYN_UPDATE_BASE_URL || "https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev").replace(/\/$/, "");
+}
+
+async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
+  const baseUrl = updateBaseUrl(env);
+  const response = await fetch(`${baseUrl}/latest.yml`, {
+    cf: { cacheTtl: 60, cacheEverything: true }
+  });
+
+  if (!response.ok) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "download:latest-yml-failed",
+        status: response.status,
+        url: `${baseUrl}/latest.yml`
+      })
+    );
+    return null;
+  }
+
+  const latestYml = await response.text();
+  const installerPath = extractLatestInstallerPath(latestYml);
+  if (!installerPath) {
+    console.warn(JSON.stringify({ level: "warn", event: "download:latest-yml-missing-installer" }));
+    return null;
+  }
+
+  return `${baseUrl}/${encodeURI(installerPath).replace(/%2F/g, "/")}`;
+}
+
+function extractLatestInstallerPath(latestYml: string): string {
+  const pathMatch = latestYml.match(/^path:\s*["']?([^"'\r\n]+)["']?\s*$/m);
+  if (pathMatch?.[1]?.endsWith(".exe")) {
+    return pathMatch[1].trim();
+  }
+
+  const urlMatch = latestYml.match(/^\s*-\s*url:\s*["']?([^"'\r\n]+\.exe)["']?\s*$/m);
+  return urlMatch?.[1]?.trim() || "";
 }
 
 async function safeJson(request: Request): Promise<Record<string, unknown>> {

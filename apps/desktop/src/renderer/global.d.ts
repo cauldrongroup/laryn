@@ -6,6 +6,7 @@ declare global {
     laryn: {
       ready: () => Promise<DesktopStatus>;
       setHotkey: (hotkey: string) => Promise<DesktopStatus>;
+      checkForUpdates: () => Promise<DesktopStatus>;
       checkWorker: () => Promise<DesktopStatus>;
       startDeviceLogin: () => Promise<{ deviceCode: string; userCode: string; verificationUri: string; expiresIn: number }>;
       pollDeviceLogin: (deviceCode: string, deviceName?: string) => Promise<{ status: "pending" | "approved"; token?: string }>;

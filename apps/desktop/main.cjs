@@ -58,6 +58,8 @@ const status = {
     mode: "error"
   },
   isRecording: false,
+  updateStatus: "idle",
+  updateMessage: "Updates check automatically after startup",
   workerStatus: "unknown",
   workerUrl: config.workerUrl,
   releaseName: packageInfo.releaseName,
@@ -329,6 +331,7 @@ function registerHotkeyFallback(error) {
 function registerIpc() {
   ipcMain.handle("renderer:ready", () => status);
   ipcMain.handle("settings:set-hotkey", (_event, hotkey) => setHotkey(hotkey));
+  ipcMain.handle("updates:check", () => checkForUpdates("manual"));
   ipcMain.handle("worker:check", refreshWorkerAuth);
   ipcMain.handle("auth:start-device-login", startDeviceLogin);
   ipcMain.handle("auth:poll-device-login", (_event, deviceCode, deviceName) => pollDeviceLogin(deviceCode, deviceName));
@@ -443,34 +446,101 @@ function registerIpc() {
 function configureAutoUpdates() {
   if (!app.isPackaged) {
     logInfo("updates:skip-unpackaged");
+    patchStatus({
+      updateStatus: "disabled",
+      updateMessage: "Updates are available in installed builds"
+    });
     return;
   }
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  autoUpdater.on("checking-for-update", () => logInfo("updates:checking"));
-  autoUpdater.on("update-available", (info) => logInfo("updates:available", summarizeUpdateInfo(info)));
-  autoUpdater.on("update-not-available", (info) => logInfo("updates:not-available", summarizeUpdateInfo(info)));
+  autoUpdater.on("checking-for-update", () => {
+    logInfo("updates:checking");
+    patchStatus({
+      updateStatus: "checking",
+      updateMessage: "Checking for updates"
+    });
+  });
+  autoUpdater.on("update-available", (info) => {
+    logInfo("updates:available", summarizeUpdateInfo(info));
+    patchStatus({
+      updateStatus: "downloading",
+      updateMessage: `Downloading update ${info?.version || ""}`.trim()
+    });
+  });
+  autoUpdater.on("update-not-available", (info) => {
+    logInfo("updates:not-available", summarizeUpdateInfo(info));
+    patchStatus({
+      updateStatus: "current",
+      updateMessage: "Laryn is up to date",
+      updateVersion: info?.version || app.getVersion()
+    });
+  });
   autoUpdater.on("download-progress", (progress) => {
+    const percent = Math.round(progress.percent || 0);
     logInfo("updates:download-progress", {
-      percent: Math.round(progress.percent || 0),
+      percent,
       transferred: progress.transferred,
       total: progress.total
+    });
+    patchStatus({
+      updateStatus: "downloading",
+      updateMessage: `Downloading update ${percent}%`
     });
   });
   autoUpdater.on("update-downloaded", (info) => {
     logInfo("updates:downloaded", summarizeUpdateInfo(info));
+    patchStatus({
+      updateStatus: "ready",
+      updateMessage: "Update ready. Restart Laryn to install it.",
+      updateVersion: info?.version
+    });
     new Notification({
       title: "Laryn update ready",
       body: "The update will install the next time Laryn restarts."
     }).show();
   });
-  autoUpdater.on("error", (error) => logError("updates:error", error));
+  autoUpdater.on("error", (error) => {
+    logError("updates:error", error);
+    patchStatus({
+      updateStatus: "error",
+      updateMessage: `Update check failed: ${formatErrorMessage(error)}`
+    });
+  });
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch((error) => logError("updates:check-failed", error));
+    checkForUpdates("startup").catch((error) => logError("updates:check-failed", error));
   }, 15000);
+}
+
+async function checkForUpdates(source) {
+  if (!app.isPackaged) {
+    patchStatus({
+      updateStatus: "disabled",
+      updateMessage: "Updates are available in installed builds"
+    });
+    return status;
+  }
+
+  logInfo("updates:check-requested", { source });
+  patchStatus({
+    updateStatus: "checking",
+    updateMessage: "Checking for updates"
+  });
+
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    logError("updates:check-failed", error, { source });
+    patchStatus({
+      updateStatus: "error",
+      updateMessage: `Update check failed: ${formatErrorMessage(error)}`
+    });
+  }
+
+  return status;
 }
 
 function loadPackageInfo(baseDir) {

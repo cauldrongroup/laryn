@@ -186,6 +186,7 @@ export default function MainView() {
           onSelectAudioInput={selectAudioInput}
           onRefreshInputs={() => void requestMicrophoneAndRefresh()}
           onCheckWorker={() => void window.laryn.checkWorker().then(setStatus)}
+          onCheckUpdates={() => void window.laryn.checkForUpdates().then(setStatus)}
           onSetHotkey={async (nextHotkey) => {
             setHotkeyError("");
             try {
@@ -841,6 +842,7 @@ function SettingsDrawer({
   onSelectAudioInput,
   onRefreshInputs,
   onCheckWorker,
+  onCheckUpdates,
   onSetHotkey,
   onStartLogin,
   onLogout
@@ -858,6 +860,7 @@ function SettingsDrawer({
   onSelectAudioInput: (deviceId: string) => void;
   onRefreshInputs: () => void;
   onCheckWorker: () => void;
+  onCheckUpdates: () => void;
   onSetHotkey: (hotkey: string) => Promise<void>;
   onStartLogin: () => Promise<void>;
   onLogout: () => Promise<void>;
@@ -919,7 +922,12 @@ function SettingsDrawer({
           onSetHotkey={onSetHotkey}
         />
 
-        <SectionWorker status={status} hotkey={hotkey} onCheckWorker={onCheckWorker} />
+        <SectionWorker
+          status={status}
+          hotkey={hotkey}
+          onCheckWorker={onCheckWorker}
+          onCheckUpdates={onCheckUpdates}
+        />
       </aside>
     </div>
   );
@@ -1233,12 +1241,16 @@ function SectionCleanup({
 function SectionWorker({
   status,
   hotkey,
-  onCheckWorker
+  onCheckWorker,
+  onCheckUpdates
 }: {
   status: DesktopStatus;
   hotkey: string;
   onCheckWorker: () => void;
+  onCheckUpdates: () => void;
 }) {
+  const updateBusy = status.updateStatus === "checking" || status.updateStatus === "downloading";
+
   return (
     <section className="grid gap-3">
       <SectionIntro
@@ -1255,15 +1267,31 @@ function SectionWorker({
         <DefinitionRow label="Hotkey" value={hotkey} />
         <DefinitionRow label="Version" value={status.appVersion} mono />
         <DefinitionRow label="Update" value={status.releaseName} mono />
+        <DefinitionRow
+          label="Updater"
+          value={status.updateMessage}
+          tone={status.updateStatus === "error" ? "warn" : status.updateStatus === "ready" ? "good" : undefined}
+        />
       </div>
-      <button
-        className="btn btn-secondary w-full"
-        type="button"
-        onClick={onCheckWorker}
-      >
-        <RefreshCw size={14} />
-        Check connection
-      </button>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          className="btn btn-secondary w-full"
+          type="button"
+          onClick={onCheckWorker}
+        >
+          <RefreshCw size={14} />
+          Check connection
+        </button>
+        <button
+          className="btn btn-secondary w-full"
+          type="button"
+          disabled={updateBusy}
+          onClick={onCheckUpdates}
+        >
+          <RefreshCw size={14} />
+          {updateBusy ? "Checking" : "Check updates"}
+        </button>
+      </div>
     </section>
   );
 }

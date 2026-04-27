@@ -82,7 +82,8 @@ The Worker uses these model defaults:
 - Speech-to-text hints: configurable with `TRANSCRIPTION_HINTS` for names, product terms, acronyms, and project vocabulary that are often misheard
 - Cheap cleanup: `@cf/meta/llama-3.2-1b-instruct`
 - Standard cleanup: `@cf/meta/llama-3.2-3b-instruct`
-- Premium/fallback cleanup: `@cf/meta/llama-3.1-8b-instruct-fast`
+- Premium cleanup: `@cf/google/gemma-4-26b-a4b-it`
+- Cleanup fallback: `@cf/meta/llama-3.1-8b-instruct-fast`
 - Default cleanup tier: `off`
 - Cleanup timeout: `3500ms`, then paste the raw transcript
 
@@ -93,6 +94,27 @@ Deploy with:
 ```powershell
 pnpm worker:deploy
 ```
+
+Validate the Worker bundle without deploying:
+
+```powershell
+pnpm worker:dry-run
+```
+
+GitHub Actions are split by purpose:
+
+- `CI`: runs on push and PR, then typechecks, lints, and runs `wrangler deploy --dry-run`.
+- `Worker Deploy`: manual production Worker deploy with the checked-in Wrangler CLI.
+- `Desktop Release`: manual Windows installer and R2 auto-update publication.
+
+Cloudflare Git-connected Worker build settings:
+
+- Root directory: `/`
+- Build command: `pnpm --filter @laryn/worker build`
+- Deploy command: `pnpm --filter @laryn/worker run deploy`
+- Version command: `pnpm --filter @laryn/worker run versions:upload`
+
+Keep the root directory at `/` so pnpm can resolve the workspace package `@laryn/shared`. The filtered pnpm commands execute inside `apps/worker`, where `wrangler.jsonc` lives.
 
 ## Desktop releases
 

@@ -43,6 +43,20 @@ describe("usage billing calculations", () => {
     expect(cost.costMicroUsd).toBe(1_275);
   });
 
+  it("prices Gemma 4 premium cleanup", () => {
+    const cost = calculateCleanupUsageCost("@cf/google/gemma-4-26b-a4b-it", "ignored", "ignored", {
+      usage: {
+        input_tokens: 10_000,
+        output_tokens: 5_000
+      }
+    });
+
+    expect(cost.inputTokens).toBe(10_000);
+    expect(cost.outputTokens).toBe(5_000);
+    expect(cost.estimatedTokens).toBe(false);
+    expect(cost.costMicroUsd).toBe(2_500);
+  });
+
   it("does not add cleanup cost for unpriced or skipped cleanup models", () => {
     const cost = calculateCleanupUsageCost("none", "input", "output");
     expect(cost.costMicroUsd).toBe(0);

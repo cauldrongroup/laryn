@@ -137,5 +137,13 @@ jobs:
           }
 
           foreach ($file in $files) {
-            pnpm dlx wrangler@latest r2 object put "$env:LARYN_R2_BUCKET/$($file.Name)" --file "$($file.FullName)"
+            pnpm --filter @laryn/worker exec wrangler r2 object put "$env:LARYN_R2_BUCKET/$($file.Name)" --file "$($file.FullName)" --remote
+          }
+
+          pnpm --filter @laryn/worker exec wrangler r2 object get "$env:LARYN_R2_BUCKET/latest.yml" --remote --file "$env:RUNNER_TEMP/latest.yml"
+
+          $publicLatestUrl = "$($env:LARYN_UPDATE_BASE_URL.TrimEnd('/'))/latest.yml"
+          $latestResponse = Invoke-WebRequest -Uri $publicLatestUrl -UseBasicParsing
+          if ($latestResponse.StatusCode -ne 200) {
+            throw "Public update feed is not reachable: $publicLatestUrl"
           }
