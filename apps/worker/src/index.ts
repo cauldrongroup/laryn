@@ -903,7 +903,7 @@ async function listDevices(env: Env, userId: string): Promise<DesktopDevice[]> {
   const result = await env.DB.prepare(
     `SELECT id, device_name, created_at, last_seen_at, revoked_at
      FROM desktop_devices
-     WHERE user_id = ?
+     WHERE user_id = ? AND revoked_at IS NULL
      ORDER BY created_at DESC`
   )
     .bind(userId)
@@ -1651,29 +1651,51 @@ function renderDashboardPage(): string {
     const params = new URLSearchParams(location.search);
     let pendingCode = params.get("device_code") || sessionStorage.getItem("laryn.pendingDeviceCode") || "";
     if (pendingCode) sessionStorage.setItem("laryn.pendingDeviceCode", pendingCode);
+    let currentAccount = null;
+    let loadingAccount = false;
+    let approvingDevice = false;
+    const revokingDevices = new Set();
     const content = document.querySelector("#content");
     const approval = document.querySelector("#device-approval");
     const signIn = document.querySelector("#sign-in");
 
     signIn.addEventListener("click", async () => {
+      if (signIn.disabled) return;
+      signIn.disabled = true;
+      signIn.textContent = "Opening Google...";
+      try {
       const data = await json("/api/auth/sign-in/social", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: "google", callbackURL: pendingCode ? "/app?device_code=" + encodeURIComponent(pendingCode) : "/app" })
       });
       if (data.url) location.href = data.url;
+      } catch (error) {
+        signIn.disabled = false;
+        signIn.textContent = "Sign in with Google";
+        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
+      }
     });
 
     async function json(url, options) {
       const response = await fetch(url, { credentials: "include", ...options });
-      const data = await response.json().catch(() => ({}));
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: "Invalid response", detail: text.slice(0, 180) };
+      }
       if (!response.ok) throw new Error((data.detail || data.error || "Request failed") + " (HTTP " + response.status + ")");
       return data;
     }
 
     async function load() {
+      if (loadingAccount) return;
+      loadingAccount = true;
       try {
         const account = await json("/api/account/me");
+        currentAccount = account;
         signIn.textContent = "Signed in";
         signIn.disabled = true;
         if (pendingCode) {
@@ -1681,20 +1703,40 @@ function renderDashboardPage(): string {
           document.querySelector("#approve-device").addEventListener("click", approveDevice);
         }
         render(account);
-      } catch {
+      } catch (error) {
+        currentAccount = null;
+        signIn.textContent = "Sign in with Google";
+        signIn.disabled = false;
+        approval.innerHTML = pendingCode
+          ? '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in to pair this device</strong><p>After signing in, approve code <code>' + escapeHtml(pendingCode) + '</code>.</p></div></div>'
+          : "";
         content.innerHTML = '<article class="card card-wide"><span class="card-eyebrow">Sign in required</span><h2>Connect your account</h2><p>Use Google to manage your Laryn Pro subscription and approve desktop devices.</p></article>';
+      } finally {
+        loadingAccount = false;
       }
     }
 
     async function approveDevice() {
       const code = pendingCode;
-      if (!code) return;
+      if (!code || approvingDevice) return;
+      approvingDevice = true;
+      const button = document.querySelector("#approve-device");
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Approving...";
+      }
+      try {
       history.replaceState(null, "", "/app");
       await json("/api/device/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userCode: code }) });
       pendingCode = "";
       sessionStorage.removeItem("laryn.pendingDeviceCode");
       approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Device approved</strong><p>Return to the desktop app. It will finish pairing in a few seconds.</p></div></div>';
       await load();
+      } catch (error) {
+        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Approval failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
+      } finally {
+        approvingDevice = false;
+      }
     }
 
     function escapeHtml(value) {
@@ -1731,13 +1773,29 @@ function renderDashboardPage(): string {
     }
 
     async function revoke(id) {
-      await json("/api/account/devices/" + id + "/revoke", { method: "POST" });
-      await load();
+      if (!id || revokingDevices.has(id)) return;
+      revokingDevices.add(id);
+      if (currentAccount && Array.isArray(currentAccount.devices)) {
+        currentAccount = {
+          ...currentAccount,
+          devices: currentAccount.devices.filter(device => device.id !== id)
+        };
+        render(currentAccount);
+      }
+      try {
+        await json("/api/account/devices/" + encodeURIComponent(id) + "/revoke", { method: "POST" });
+        await load();
+      } catch (error) {
+        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Revoke failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
+        await load();
+      } finally {
+        revokingDevices.delete(id);
+      }
     }
 
     function render(account) {
       const billing = account.billing || {};
-      const devices = account.devices || [];
+      const devices = (account.devices || []).filter(device => !device.revokedAt);
       const usage = account.usage || { transcriptionCount: 0, audioDurationMs: 0 };
       const credits = billing.usageCredits || { includedCents: 300 };
       const proActive = Boolean(billing.proActive);
@@ -1788,7 +1846,7 @@ function renderDashboardPage(): string {
         + '</article>'
         + '<article class="card card-wide">'
           + '<div class="card-head">'
-            + '<div><span class="card-eyebrow">Devices</span><h2>' + devices.length + ' paired</h2></div>'
+            + '<div><span class="card-eyebrow">Devices</span><h2>' + devices.length + ' active</h2></div>'
             + statusBadge
           + '</div>'
           + (devices.length === 0
@@ -1797,11 +1855,9 @@ function renderDashboardPage(): string {
                   '<div class="device-row">'
                     + '<div class="device-text">'
                       + '<strong>' + escapeHtml(device.deviceName) + '</strong>'
-                      + '<small>' + (device.revokedAt ? "Revoked" : "Active") + '</small>'
+                      + '<small>' + escapeHtml(device.lastSeenAt ? "Last seen " + formatDate(device.lastSeenAt) : "Paired " + formatDate(device.createdAt)) + '</small>'
                     + '</div>'
-                    + (device.revokedAt
-                        ? '<span class="badge badge-mute">Revoked</span>'
-                        : '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm">Revoke</button>')
+                    + '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm"' + (revokingDevices.has(device.id) ? " disabled" : "") + '>' + (revokingDevices.has(device.id) ? "Revoking..." : "Revoke") + '</button>'
                   + '</div>'
                 )).join("") + '</div>')
         + '</article>';
@@ -1814,6 +1870,12 @@ function renderDashboardPage(): string {
 
     function dollars(cents) {
       return "$" + (Number(cents || 0) / 100).toFixed(2);
+    }
+
+    function formatDate(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "unknown";
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     }
 
     function creditUsagePercent(credits) {

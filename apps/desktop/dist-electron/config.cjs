@@ -4,7 +4,7 @@ const path = require("node:path");
 const DEFAULTS = {
   cleanupTier: "off",
   hotkey: "Control+Super",
-  workerUrl: "https://laryn-transcribe.mineperial.workers.dev"
+  workerUrl: "https://laryn.mineperial.com"
 };
 
 function loadConfig(baseDir) {

@@ -8,6 +8,12 @@
   "observability": {
     "enabled": true
   },
+  "routes": [
+    {
+      "pattern": "laryn.mineperial.com",
+      "custom_domain": true
+    }
+  ],
   "ai": {
     "binding": "AI",
     "remote": true
@@ -20,9 +26,9 @@
     }
   ],
   "vars": {
-    "BETTER_AUTH_URL": "https://laryn-transcribe.mineperial.workers.dev",
+    "BETTER_AUTH_URL": "https://laryn.mineperial.com",
     "POLAR_SERVER": "production",
-    "PUBLIC_APP_URL": "https://laryn-transcribe.mineperial.workers.dev",
+    "PUBLIC_APP_URL": "https://laryn.mineperial.com",
     "POLAR_PRO_PRODUCT_ID": "3d8f3e31-841c-41a2-92b3-bcfeaebeeba4",
     "POLAR_USAGE_EVENT_NAME": "laryn-usage",
     "POLAR_USAGE_METER_ID": "435e7d54-2c7c-4dd8-88c5-850d13ccf486",

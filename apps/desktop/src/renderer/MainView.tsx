@@ -93,7 +93,10 @@ export default function MainView() {
     if (!deviceCode || status.authStatus !== "pending") return;
 
     let cancelled = false;
-    const timer = window.setInterval(() => {
+    let polling = false;
+    const poll = () => {
+      if (cancelled || polling) return;
+      polling = true;
       void window.laryn
         .pollDeviceLogin(deviceCode)
         .then((result) => {
@@ -109,8 +112,14 @@ export default function MainView() {
           if (cancelled) return;
           setDeviceLoginError(error instanceof Error ? error.message : String(error));
           window.clearInterval(timer);
+        })
+        .finally(() => {
+          polling = false;
         });
-    }, 2500);
+    };
+
+    poll();
+    const timer = window.setInterval(poll, 2500);
 
     return () => {
       cancelled = true;

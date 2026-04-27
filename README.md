@@ -19,7 +19,7 @@ Copy-Item apps\worker\.dev.vars.example apps\worker\.dev.vars
 The desktop defaults to the deployed Worker:
 
 ```powershell
-https://laryn-transcribe.mineperial.workers.dev
+https://laryn.mineperial.com
 ```
 
 Only start a local Worker when you are actively developing Worker code:
@@ -63,12 +63,12 @@ The Worker uses Cloudflare AI Gateway for Groq speech-to-text when `TRANSCRIPTIO
 Google OAuth callback URLs:
 
 - Local: `http://localhost:8787/api/auth/callback/google`
-- Production: `https://your-domain.com/api/auth/callback/google`
+- Production: `https://laryn.mineperial.com/api/auth/callback/google`
 
 Polar is configured through the Better Auth plugin. The webhook endpoint is:
 
 ```text
-https://your-domain.com/api/auth/polar/webhooks
+https://laryn.mineperial.com/api/auth/polar/webhooks
 ```
 
 Desktop clients now pair with an account using a device-code flow from the Settings drawer. The old shared `LARYN_DESKTOP_TOKEN` flow has been replaced by per-device tokens stored by Electron safe storage.

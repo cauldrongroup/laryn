@@ -31,6 +31,7 @@ let desktopAuth = {
   account: null,
   billing: null
 };
+let authGeneration = 0;
 
 const MAX_HISTORY_ENTRIES = 500;
 
@@ -468,7 +469,12 @@ async function startDeviceLogin() {
     throw new Error(formatWorkerErrorMessage(payload, response.status));
   }
 
+  desktopAuth = { token: "", account: null, billing: null };
+  authGeneration += 1;
+  saveDesktopAuth();
   patchStatus({
+    account: null,
+    billing: null,
     authStatus: "pending",
     workerStatus: "online",
     state: "idle",
@@ -482,9 +488,6 @@ async function startDeviceLogin() {
   });
 
   await shell.openExternal(payload.verificationUri);
-  void refreshWorkerAuth().catch((error) => {
-    logWarn("worker:auth-refresh-after-transcription-failed", { error: formatErrorForLog(error) });
-  });
 
   return payload;
 }
@@ -512,6 +515,7 @@ async function pollDeviceLogin(deviceCode, deviceName) {
   }
 
   if (payload.status === "approved" && typeof payload.token === "string") {
+    authGeneration += 1;
     desktopAuth = {
       token: payload.token,
       account: payload.account || null,
@@ -535,6 +539,7 @@ async function pollDeviceLogin(deviceCode, deviceName) {
 
 async function logoutDevice() {
   desktopAuth = { token: "", account: null, billing: null };
+  authGeneration += 1;
   saveDesktopAuth();
   patchStatus({
     account: null,
@@ -833,7 +838,10 @@ function patchStatus(next) {
 }
 
 async function refreshWorkerAuth() {
-  if (!desktopAuth.token) {
+  const generation = authGeneration;
+  const token = desktopAuth.token;
+
+  if (!token) {
     logWarn("worker:auth:signed-out");
     if (status.authStatus === "pending" && status.deviceLogin) {
       patchStatus({
@@ -855,6 +863,11 @@ async function refreshWorkerAuth() {
     logInfo("worker:health:start", { url: `${config.workerUrl}/health` });
     const health = await fetch(`${config.workerUrl}/health`);
     logInfo("worker:health:response", { status: health.status, ok: health.ok });
+    if (generation !== authGeneration || token !== desktopAuth.token) {
+      logInfo("worker:health:stale", { generation, currentGeneration: authGeneration });
+      return status;
+    }
+
     if (!health.ok) {
       patchStatus({
         authStatus: "unknown",
@@ -864,6 +877,11 @@ async function refreshWorkerAuth() {
       return status;
     }
   } catch {
+    if (generation !== authGeneration || token !== desktopAuth.token) {
+      logInfo("worker:health:stale-after-error", { generation, currentGeneration: authGeneration });
+      return status;
+    }
+
     logWarn("worker:health:offline", { workerUrl: config.workerUrl });
     patchStatus({
       authStatus: "unknown",
@@ -876,9 +894,14 @@ async function refreshWorkerAuth() {
   try {
     logInfo("worker:auth-check:start", { url: `${config.workerUrl}/health/auth` });
     const response = await fetch(`${config.workerUrl}/health/auth`, {
-      headers: authHeaders()
+      headers: authHeaders(token)
     });
     logInfo("worker:auth-check:response", { status: response.status, ok: response.ok });
+    if (generation !== authGeneration || token !== desktopAuth.token) {
+      logInfo("worker:auth-check:stale", { generation, currentGeneration: authGeneration });
+      return status;
+    }
+
     if (response.status === 401) {
       patchStatus({
         authStatus: "unauthorized",
@@ -899,6 +922,11 @@ async function refreshWorkerAuth() {
     }
 
     const authPayload = await readJsonResponse(response);
+    if (generation !== authGeneration || token !== desktopAuth.token) {
+      logInfo("worker:auth-check:stale-after-body", { generation, currentGeneration: authGeneration });
+      return status;
+    }
+
     desktopAuth.billing = authPayload.billing || {
       ...(desktopAuth.billing || {}),
       proActive: Boolean(authPayload.proActive),
@@ -927,6 +955,11 @@ async function refreshWorkerAuth() {
       message: `Worker online at ${config.workerUrl}`
     });
   } catch {
+    if (generation !== authGeneration || token !== desktopAuth.token) {
+      logInfo("worker:auth-check:stale-after-error", { generation, currentGeneration: authGeneration });
+      return status;
+    }
+
     logWarn("worker:auth-check:failed", { workerUrl: config.workerUrl });
     patchStatus({
       authStatus: "unknown",
@@ -960,8 +993,8 @@ async function readJsonResponse(response) {
   }
 }
 
-function authHeaders() {
-  return desktopAuth.token ? { authorization: `Bearer ${desktopAuth.token}` } : undefined;
+function authHeaders(token = desktopAuth.token) {
+  return token ? { authorization: `Bearer ${token}` } : undefined;
 }
 
 function canRecord() {
