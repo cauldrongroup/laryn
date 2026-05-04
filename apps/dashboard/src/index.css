@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: "Aptos", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-elevated: hsl(var(--card-elevated));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --radius-sm: calc(var(--radius) - 3px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+:root {
+  color-scheme: dark;
+  --radius: 0.5rem;
+  --background: 150 6% 8%;
+  --foreground: 48 22% 92%;
+  --card: 150 5% 11%;
+  --card-foreground: 48 22% 92%;
+  --card-elevated: 154 7% 14%;
+  --popover: 150 5% 11%;
+  --popover-foreground: 48 22% 92%;
+  --primary: 145 59% 66%;
+  --primary-foreground: 150 16% 9%;
+  --secondary: 154 7% 17%;
+  --secondary-foreground: 48 22% 92%;
+  --muted: 154 7% 17%;
+  --muted-foreground: 50 8% 66%;
+  --accent: 41 85% 66%;
+  --accent-foreground: 150 16% 9%;
+  --destructive: 2 78% 64%;
+  --destructive-foreground: 48 22% 96%;
+  --border: 154 6% 22%;
+  --input: 154 6% 22%;
+  --ring: 145 59% 66%;
+}
+
+html {
+  min-height: 100%;
+  background: hsl(var(--background));
+  scroll-behavior: smooth;
+}
+
+body,
+#root {
+  min-height: 100dvh;
+  margin: 0;
+}
+
+body {
+  background:
+    linear-gradient(90deg, hsl(154 5% 12% / 0.3) 1px, transparent 1px),
+    linear-gradient(180deg, hsl(154 5% 12% / 0.3) 1px, transparent 1px),
+    hsl(var(--background));
+  background-size: 44px 44px;
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "tnum";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: hsl(var(--primary) / 0.28);
+  color: hsl(var(--foreground));
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}

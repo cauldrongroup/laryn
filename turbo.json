@@ -1,0 +1,44 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "LARYN_CLEANUP_TIER",
+    "LARYN_HOTKEY",
+    "LARYN_RENDERER_URL",
+    "LARYN_UPDATE_BASE_URL",
+    "LARYN_WORKER_URL",
+    "CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_API_TOKEN",
+    "POLAR_ACCESS_TOKEN"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "@laryn/desktop#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "dist-electron/**", "release/**"]
+    },
+    "@laryn/dashboard#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "../worker/src/dashboard-assets.ts"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": [],
+      "cache": false
+    }
+  }
+}

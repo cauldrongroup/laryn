@@ -6,6 +6,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { EventType, uIOhook, UiohookKey } = require("uiohook-napi");
 const { loadConfig, normalizeCleanupTier } = require("./config.cjs");
+const { createBufferedLogSink } = require("./src/main/buffered-log-sink.cjs");
+const { bindFirstRevealTrigger } = require("./src/main/window-reveal.cjs");
 
 const execFileAsync = promisify(execFile);
 const config = loadConfig(__dirname);
@@ -20,16 +22,22 @@ let shouldQuit = false;
 let cleanupTier = config.cleanupTier;
 let nativeHookReady = false;
 let logFilePath = null;
+let logSink = null;
 let authFilePath = null;
 let historyFilePath = null;
 let settingsFilePath = null;
 let dictionaryFilePath = null;
+let dictationRendererReady = false;
+let dictationRendererReadyWaiters = [];
+let statusBroadcastQueued = false;
 let historyCache = null;
 let dictionaryCache = null;
 let desktopSettings = {
   hotkey: config.hotkey
 };
 let activeHotkeyBinding = null;
+let updateCheckPromise = null;
+let updateReadyToInstall = false;
 let desktopAuth = {
   token: "",
   account: null,
@@ -90,27 +98,30 @@ app.whenReady().then(() => {
   configureLogging();
   loadDesktopSettings();
   loadDesktopAuth();
-  loadHistory();
   loadDictionary();
   logInfo("app:ready", {
     workerUrl: config.workerUrl,
     rendererUrl: config.rendererUrl || "packaged",
     hasDesktopToken: Boolean(desktopAuth.token),
     cleanupTier,
-    historyCount: historyCache?.length ?? 0,
+    historyLoaded: false,
     dictionaryCount: dictionaryCache?.length ?? 0
   });
   configureMediaPermissions();
+  registerIpc();
   createWindow();
-  createDictationWindow();
   createTray();
   registerNativeHotkey();
-  registerIpc();
   configureAutoUpdates();
   void refreshWorkerAuth();
 });
 
 app.on("window-all-closed", () => undefined);
+
+app.on("before-quit-for-update", () => {
+  shouldQuit = true;
+  logInfo("updates:before-quit-for-update");
+});
 
 app.on("will-quit", () => {
   logInfo("app:will-quit");
@@ -118,6 +129,8 @@ app.on("will-quit", () => {
   if (nativeHookReady) {
     uIOhook.stop();
   }
+  logSink?.close();
+  logSink = null;
 });
 
 function createWindow() {
@@ -149,7 +162,11 @@ function createWindow() {
 
   void loadRendererInto(window, "main");
 
-  window.once("ready-to-show", () => {
+  const revealSubscribers = [(fire) => window.once("ready-to-show", fire)];
+  if (process.platform === "linux") {
+    revealSubscribers.push((fire) => window.webContents.once("did-finish-load", fire));
+  }
+  bindFirstRevealTrigger(revealSubscribers, () => {
     if (!window.isDestroyed()) {
       window.show();
     }
@@ -160,6 +177,10 @@ function createWindow() {
       event.preventDefault();
       mainWindow?.hide();
     }
+  });
+
+  window.on("show", () => {
+    sendMainWindowSnapshot(window);
   });
 }
 
@@ -180,12 +201,14 @@ function createDictationWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      backgroundThrottling: false
     }
   });
 
   dictationWindow = window;
   dictationWindowReady = false;
+  dictationRendererReady = false;
   window.webContents.setWindowOpenHandler(({ url }) => {
     const externalUrl = getSafeExternalUrl(url);
     if (externalUrl) {
@@ -196,7 +219,11 @@ function createDictationWindow() {
 
   void loadRendererInto(window, "overlay");
 
-  window.once("ready-to-show", () => {
+  const readySubscribers = [(fire) => window.once("ready-to-show", fire)];
+  if (process.platform === "linux") {
+    readySubscribers.push((fire) => window.webContents.once("did-finish-load", fire));
+  }
+  bindFirstRevealTrigger(readySubscribers, () => {
     dictationWindowReady = true;
     logInfo("dictation:ready-to-show");
   });
@@ -204,7 +231,17 @@ function createDictationWindow() {
   window.on("closed", () => {
     dictationWindow = null;
     dictationWindowReady = false;
+    dictationRendererReady = false;
+    resolveDictationRendererWaiters();
   });
+}
+
+function ensureDictationWindow() {
+  if (!dictationWindow || dictationWindow.isDestroyed()) {
+    createDictationWindow();
+  }
+
+  return dictationWindow;
 }
 
 function loadRendererInto(window, view) {
@@ -338,9 +375,16 @@ function registerHotkeyFallback(error) {
 }
 
 function registerIpc() {
-  ipcMain.handle("renderer:ready", () => status);
+  ipcMain.handle("renderer:ready", (event) => {
+    if (event.sender.id === dictationWindow?.webContents.id) {
+      dictationRendererReady = true;
+      resolveDictationRendererWaiters();
+    }
+    return status;
+  });
   ipcMain.handle("settings:set-hotkey", (_event, hotkey) => setHotkey(hotkey));
   ipcMain.handle("updates:check", () => checkForUpdates("manual"));
+  ipcMain.handle("updates:install", installUpdate);
   ipcMain.handle("worker:check", refreshWorkerAuth);
   ipcMain.handle("auth:start-device-login", startDeviceLogin);
   ipcMain.handle("auth:poll-device-login", (_event, deviceCode, deviceName) => pollDeviceLogin(deviceCode, deviceName));
@@ -489,13 +533,16 @@ function configureAutoUpdates() {
   });
   autoUpdater.on("update-available", (info) => {
     logInfo("updates:available", summarizeUpdateInfo(info));
+    updateReadyToInstall = false;
     patchStatus({
       updateStatus: "downloading",
-      updateMessage: `Downloading update ${info?.version || ""}`.trim()
+      updateMessage: `Downloading update ${info?.version || ""}`.trim(),
+      updateVersion: info?.version
     });
   });
   autoUpdater.on("update-not-available", (info) => {
     logInfo("updates:not-available", summarizeUpdateInfo(info));
+    updateReadyToInstall = false;
     patchStatus({
       updateStatus: "current",
       updateMessage: "Laryn is up to date",
@@ -516,15 +563,18 @@ function configureAutoUpdates() {
   });
   autoUpdater.on("update-downloaded", (info) => {
     logInfo("updates:downloaded", summarizeUpdateInfo(info));
+    updateReadyToInstall = true;
     patchStatus({
       updateStatus: "ready",
       updateMessage: "Update ready. Restart Laryn to install it.",
       updateVersion: info?.version
     });
-    new Notification({
-      title: "Laryn update ready",
-      body: "The update will install the next time Laryn restarts."
-    }).show();
+    if (Notification.isSupported()) {
+      new Notification({
+        title: "Laryn update ready",
+        body: "The update will install the next time Laryn restarts."
+      }).show();
+    }
   });
   autoUpdater.on("error", (error) => {
     logError("updates:error", error);
@@ -548,6 +598,26 @@ async function checkForUpdates(source) {
     return status;
   }
 
+  if (updateReadyToInstall) {
+    logInfo("updates:check-skipped-ready", { source });
+    return status;
+  }
+
+  if (status.updateStatus === "downloading") {
+    logInfo("updates:check-skipped-downloading", { source });
+    return status;
+  }
+
+  if (updateCheckPromise) {
+    logInfo("updates:check-joined", { source });
+    try {
+      await updateCheckPromise;
+    } catch {
+      // The active check already logged and patched status for the failure.
+    }
+    return status;
+  }
+
   logInfo("updates:check-requested", { source });
   patchStatus({
     updateStatus: "checking",
@@ -555,14 +625,53 @@ async function checkForUpdates(source) {
   });
 
   try {
-    await autoUpdater.checkForUpdates();
+    updateCheckPromise = autoUpdater.checkForUpdates();
+    await updateCheckPromise;
   } catch (error) {
     logError("updates:check-failed", error, { source });
     patchStatus({
       updateStatus: "error",
       updateMessage: `Update check failed: ${formatErrorMessage(error)}`
     });
+  } finally {
+    updateCheckPromise = null;
   }
+
+  return status;
+}
+
+function installUpdate() {
+  if (!app.isPackaged) {
+    patchStatus({
+      updateStatus: "disabled",
+      updateMessage: "Updates are available in installed builds"
+    });
+    return status;
+  }
+
+  if (!updateReadyToInstall && status.updateStatus !== "ready") {
+    throw new Error("No downloaded update is ready to install.");
+  }
+
+  logInfo("updates:install-requested");
+  shouldQuit = true;
+  patchStatus({
+    updateStatus: "restarting",
+    updateMessage: "Restarting to install update"
+  });
+
+  setImmediate(() => {
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (error) {
+      shouldQuit = false;
+      logError("updates:install-failed", error);
+      patchStatus({
+        updateStatus: "ready",
+        updateMessage: `Could not restart for update: ${formatErrorMessage(error)}`
+      });
+    }
+  });
 
   return status;
 }
@@ -735,9 +844,7 @@ async function getAccountStatus() {
 }
 
 async function startRecording() {
-  if (!dictationWindow || dictationWindow.isDestroyed()) {
-    createDictationWindow();
-  }
+  ensureDictationWindow();
 
   if (!dictationWindow || hotkeyState.recordingRequested) {
     logWarn("recording:start:ignored", {
@@ -884,8 +991,7 @@ function formatWorkerErrorMessage(payload, statusCode) {
 
 async function pasteText(text) {
   logInfo("paste:start", {
-    textLength: text.length,
-    clipboardBeforeLength: clipboard.readText().length
+    textLength: text.length
   });
   clipboard.writeText(text);
   await new Promise((resolve) => setTimeout(resolve, 220));
@@ -912,8 +1018,7 @@ Start-Sleep -Milliseconds 30
   ]);
   logInfo("paste:powershell-complete", {
     stdout: stdout.trim().slice(0, 200),
-    stderr: stderr.trim().slice(0, 200),
-    clipboardAfterLength: clipboard.readText().length
+    stderr: stderr.trim().slice(0, 200)
   });
 }
 
@@ -969,7 +1074,11 @@ function revealDictationWindow(bounds) {
     return;
   }
 
-  window.once("ready-to-show", () => {
+  const revealSubscribers = [(fire) => window.once("ready-to-show", fire)];
+  if (process.platform === "linux") {
+    revealSubscribers.push((fire) => window.webContents.once("did-finish-load", fire));
+  }
+  bindFirstRevealTrigger(revealSubscribers, () => {
     dictationWindowReady = true;
     showOnce();
   });
@@ -986,8 +1095,43 @@ async function sendToDictationWindow(channel) {
     });
   }
 
+  await waitForDictationRendererReady();
+
   if (!dictationWindow.isDestroyed()) {
     dictationWindow.webContents.send(channel);
+  }
+}
+
+function waitForDictationRendererReady(timeoutMs = 5000) {
+  if (dictationRendererReady || !dictationWindow || dictationWindow.isDestroyed()) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const waiter = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    const timeout = setTimeout(() => {
+      logWarn("dictation:renderer-ready-timeout", { timeoutMs });
+      resolveDictationRendererWaiter(waiter);
+      resolve();
+    }, timeoutMs);
+    timeout.unref?.();
+
+    dictationRendererReadyWaiters.push(waiter);
+  });
+}
+
+function resolveDictationRendererWaiter(targetWaiter) {
+  dictationRendererReadyWaiters = dictationRendererReadyWaiters.filter((waiter) => waiter !== targetWaiter);
+}
+
+function resolveDictationRendererWaiters() {
+  const waiters = dictationRendererReadyWaiters;
+  dictationRendererReadyWaiters = [];
+  for (const resolve of waiters) {
+    resolve();
   }
 }
 
@@ -1003,11 +1147,42 @@ function getCenteredOverlayBounds(display, width, height) {
 
 function patchStatus(next) {
   Object.assign(status, next);
-  mainWindow?.webContents.send("desktop:status", status);
-  dictationWindow?.webContents.send("desktop:status", status);
+  queueStatusBroadcast();
 
   if (next.state === "error" && Notification.isSupported()) {
     new Notification({ title: "Laryn", body: status.message }).show();
+  }
+}
+
+function queueStatusBroadcast() {
+  if (statusBroadcastQueued) {
+    return;
+  }
+
+  statusBroadcastQueued = true;
+  setImmediate(() => {
+    statusBroadcastQueued = false;
+    broadcastStatus();
+  });
+}
+
+function broadcastStatus() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.webContents.send("desktop:status", status);
+  }
+  if (dictationWindow && !dictationWindow.isDestroyed()) {
+    dictationWindow.webContents.send("desktop:status", status);
+  }
+}
+
+function sendMainWindowSnapshot(window) {
+  if (!window || window.isDestroyed()) {
+    return;
+  }
+
+  window.webContents.send("desktop:status", status);
+  if (historyCache) {
+    window.webContents.send("desktop:history-changed", historyCache);
   }
 }
 
@@ -1416,6 +1591,8 @@ function configureLogging() {
   const logDir = path.join(app.getPath("userData"), "logs");
   fs.mkdirSync(logDir, { recursive: true });
   logFilePath = path.join(logDir, "laryn-desktop.log");
+  logSink?.close();
+  logSink = createBufferedLogSink(logFilePath);
   authFilePath = path.join(app.getPath("userData"), "desktop-auth.json");
   historyFilePath = path.join(app.getPath("userData"), "history.json");
   settingsFilePath = path.join(app.getPath("userData"), "settings.json");
@@ -1648,6 +1825,7 @@ function isValidHistoryEntry(entry) {
 }
 
 function appendHistoryEntry(transcript, durationFallbackMs) {
+  if (!historyCache) loadHistory();
   if (!historyCache) historyCache = [];
 
   const text = typeof transcript?.text === "string" ? transcript.text : "";
@@ -1714,7 +1892,9 @@ function clearHistory() {
 
 function broadcastHistoryChanged() {
   if (!historyCache) return;
-  mainWindow?.webContents.send("desktop:history-changed", historyCache);
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.webContents.send("desktop:history-changed", historyCache);
+  }
 }
 
 function generateLocalHistoryId() {
@@ -1837,15 +2017,11 @@ function writeLog(level, event, details) {
   const method = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
   method(`[laryn] ${line}`);
 
-  if (!logFilePath) {
+  if (!logSink) {
     return;
   }
 
-  try {
-    fs.appendFileSync(logFilePath, `${line}\n`, "utf8");
-  } catch (error) {
-    console.warn("[laryn] failed to write log file", error);
-  }
+  logSink.write(`${line}\n`);
 }
 
 function formatErrorForLog(error) {

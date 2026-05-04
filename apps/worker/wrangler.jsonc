@@ -6,7 +6,8 @@
   "compatibility_date": "2026-04-24",
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 0.1
   },
   "routes": [
     {
@@ -33,8 +34,15 @@
     "POLAR_USAGE_EVENT_NAME": "laryn-usage",
     "POLAR_USAGE_METER_ID": "435e7d54-2c7c-4dd8-88c5-850d13ccf486",
     "LARYN_INCLUDED_CREDIT_UNITS": "3000000",
+    "LARYN_MONTHLY_USAGE_CAP_UNITS": "3000000",
+    "LARYN_RATE_LIMIT_MAX_REQUESTS": "12",
+    "LARYN_RATE_LIMIT_WINDOW_SECONDS": "60",
+    "LARYN_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER": "1",
     "LARYN_POLAR_UNIT_MICRO_USD": "1",
     "LARYN_UPDATE_BASE_URL": "https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev",
+    "LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE": "667",
+    "LARYN_GROQ_MIN_BILLABLE_AUDIO_MS": "10000",
+    "LARYN_VERBOSE_LOGS": "0",
     "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE": "510",
     "AI_GATEWAY_ID": "default",
     "TRANSCRIPTION_PROVIDER": "groq",

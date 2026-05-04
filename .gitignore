@@ -3,6 +3,7 @@ dist
 dist-electron
 out
 release
+.turbo
 .wrangler
 .env
 .env.*

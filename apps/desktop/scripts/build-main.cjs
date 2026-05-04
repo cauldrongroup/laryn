@@ -13,3 +13,8 @@ const assetsDir = resolve(desktopDir, "assets");
 if (existsSync(assetsDir)) {
   cpSync(assetsDir, resolve(outDir, "assets"), { recursive: true });
 }
+
+const mainSupportDir = resolve(desktopDir, "src", "main");
+if (existsSync(mainSupportDir)) {
+  cpSync(mainSupportDir, resolve(outDir, "src", "main"), { recursive: true });
+}

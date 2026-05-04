@@ -39,6 +39,28 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate update release configuration
+        shell: pwsh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          if (-not $env:LARYN_UPDATE_BASE_URL) {
+            throw "Set repository variable LARYN_UPDATE_BASE_URL to the public R2 URL used by the updater."
+          }
+          if (-not $env:LARYN_R2_BUCKET) {
+            throw "Set repository variable LARYN_R2_BUCKET to the R2 bucket name."
+          }
+          if (-not $env:CLOUDFLARE_ACCOUNT_ID) {
+            throw "Set repository variable CLOUDFLARE_ACCOUNT_ID to the Cloudflare account id."
+          }
+          if (-not $env:AWS_ACCESS_KEY_ID) {
+            throw "Set repository secret R2_ACCESS_KEY_ID to the R2 access key id."
+          }
+          if (-not $env:AWS_SECRET_ACCESS_KEY) {
+            throw "Set repository secret R2_SECRET_ACCESS_KEY to the R2 secret access key."
+          }
+
       - name: Resolve release version
         id: version
         shell: pwsh
@@ -90,10 +112,12 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = "apps/desktop/release"
+          $expectedVersion = "${{ steps.version.outputs.version }}"
+          $expectedInstaller = "Laryn-$expectedVersion-win-x64.exe"
           $required = @(
             "$releaseDir/latest.yml",
-            "$releaseDir/Laryn-${{ steps.version.outputs.version }}-win-x64.exe",
-            "$releaseDir/Laryn-${{ steps.version.outputs.version }}-win-x64.exe.blockmap"
+            "$releaseDir/$expectedInstaller",
+            "$releaseDir/$expectedInstaller.blockmap"
           )
 
           foreach ($file in $required) {
@@ -101,6 +125,15 @@ jobs:
               Get-ChildItem $releaseDir
               throw "Missing release file: $file"
             }
+          }
+
+          $latest = Get-Content "$releaseDir/latest.yml" -Raw
+          $versionPattern = "(?m)^version:\s*$([regex]::Escape($expectedVersion))\s*$"
+          if ($latest -notmatch $versionPattern) {
+            throw "latest.yml does not advertise version $expectedVersion."
+          }
+          if (-not $latest.Contains($expectedInstaller)) {
+            throw "latest.yml does not reference $expectedInstaller."
           }
 
       - name: Upload GitHub release assets
@@ -150,8 +183,27 @@ jobs:
 
           aws s3 cp "s3://$env:LARYN_R2_BUCKET/latest.yml" "$env:RUNNER_TEMP/latest.yml" --endpoint-url $endpoint
 
+          $expectedVersion = "${{ steps.version.outputs.version }}"
+          $expectedInstaller = "Laryn-$expectedVersion-win-x64.exe"
           $publicLatestUrl = "$($env:LARYN_UPDATE_BASE_URL.TrimEnd('/'))/latest.yml"
-          $latestResponse = Invoke-WebRequest -Uri $publicLatestUrl -UseBasicParsing
-          if ($latestResponse.StatusCode -ne 200) {
-            throw "Public update feed is not reachable: $publicLatestUrl"
+          $versionPattern = "(?m)^version:\s*$([regex]::Escape($expectedVersion))\s*$"
+
+          for ($attempt = 1; $attempt -le 12; $attempt += 1) {
+            try {
+              $latestResponse = Invoke-WebRequest -Uri $publicLatestUrl -UseBasicParsing -Headers @{ "cache-control" = "no-cache" }
+              $latestBody = [string]$latestResponse.Content
+              if ($latestResponse.StatusCode -eq 200 -and $latestBody -match $versionPattern -and $latestBody.Contains($expectedInstaller)) {
+                break
+              }
+            } catch {
+              if ($attempt -eq 12) {
+                throw "Public update feed is not reachable: $publicLatestUrl"
+              }
+            }
+
+            if ($attempt -eq 12) {
+              throw "Public update feed did not publish $expectedInstaller at $publicLatestUrl."
+            }
+
+            Start-Sleep -Seconds 5
           }

@@ -5,6 +5,8 @@ import {
   calculateTranscriptionUsageCost,
   cleanupInputText,
   estimateTokens,
+  extractLatestInstallerPath,
+  latestWindowsInstallerUrlFromYml,
   normalizeDictionaryPayload
 } from "./index";
 
@@ -16,6 +18,24 @@ describe("usage billing calculations", () => {
 
   it("uses the configured Whisper micro-USD rate", () => {
     expect(calculateTranscriptionUsageCost(60_000, { LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE: "500" })).toBe(500);
+  });
+
+  it("prices Groq transcription through AI Gateway with the provider billing floor", () => {
+    expect(calculateTranscriptionUsageCost(1_000, undefined, "groq")).toBe(112);
+    expect(calculateTranscriptionUsageCost(60_000, undefined, "groq")).toBe(667);
+  });
+
+  it("uses configured Groq rate and minimum billable audio duration", () => {
+    expect(
+      calculateTranscriptionUsageCost(
+        1_000,
+        {
+          LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE: "600",
+          LARYN_GROQ_MIN_BILLABLE_AUDIO_MS: "5000"
+        },
+        "groq"
+      )
+    ).toBe(50);
   });
 
   it("estimates tokens deterministically", () => {
@@ -148,5 +168,42 @@ describe("dictionary normalization and cleanup prompt input", () => {
     const withDictionary = cleanupInputText("plain transcript", [{ kind: "replacement", phrase: "a pie", replacement: "API" }]);
 
     expect(estimateTokens(withDictionary)).toBeGreaterThan(estimateTokens(withoutDictionary));
+  });
+});
+
+describe("desktop update feed parsing", () => {
+  it("uses the top-level electron-builder installer path", () => {
+    const latestYml = [
+      "version: 0.1.2",
+      "files:",
+      "  - url: stale-installer.exe",
+      "path: Laryn-0.1.2-win-x64.exe",
+      "sha512: abc"
+    ].join("\n");
+
+    expect(extractLatestInstallerPath(latestYml)).toBe("Laryn-0.1.2-win-x64.exe");
+    expect(latestWindowsInstallerUrlFromYml("https://updates.example.com/", latestYml)).toBe(
+      "https://updates.example.com/Laryn-0.1.2-win-x64.exe"
+    );
+  });
+
+  it("falls back to files.url and encodes path segments", () => {
+    const latestYml = [
+      "version: 0.1.2",
+      "files:",
+      "  - url: releases/Laryn Setup 0.1.2.exe",
+      "    sha512: abc"
+    ].join("\n");
+
+    expect(extractLatestInstallerPath(latestYml)).toBe("releases/Laryn Setup 0.1.2.exe");
+    expect(latestWindowsInstallerUrlFromYml("https://updates.example.com/base", latestYml)).toBe(
+      "https://updates.example.com/base/releases/Laryn%20Setup%200.1.2.exe"
+    );
+  });
+
+  it("rejects absolute, traversal, and query-bearing installer paths", () => {
+    expect(extractLatestInstallerPath("path: https://evil.example/Laryn.exe")).toBe("");
+    expect(extractLatestInstallerPath("path: ../Laryn.exe")).toBe("");
+    expect(extractLatestInstallerPath("path: Laryn.exe?token=abc")).toBe("");
   });
 });
