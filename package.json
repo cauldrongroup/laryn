@@ -13,7 +13,7 @@
     "test": "turbo run test",
     "worker:dev": "pnpm --filter @laryn/worker dev",
     "worker:dev:fixed": "pnpm --filter @laryn/worker dev -- --port 8787",
-    "worker:dry-run": "pnpm --filter @laryn/dashboard build && pnpm --filter @laryn/worker exec wrangler deploy --dry-run",
+    "worker:dry-run": "node scripts/worker-dry-run.mjs",
     "worker:deploy": "pnpm --filter @laryn/worker run deploy",
     "worker:versions:upload": "pnpm --filter @laryn/worker run versions:upload",
     "desktop:dev": "pnpm --filter @laryn/desktop dev",
@@ -21,7 +21,13 @@
     "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
     "desktop:dev:hot": "pnpm --filter @laryn/desktop dev:hot",
     "desktop:build": "pnpm --filter @laryn/desktop build",
-    "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win"
+    "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win",
+    "security:scan": "node scripts/scan-secrets.mjs"
+  },
+  "pnpm": {
+    "overrides": {
+      "@esbuild-kit/core-utils>esbuild": "^0.25.12"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",

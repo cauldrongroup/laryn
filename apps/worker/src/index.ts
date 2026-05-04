@@ -134,7 +134,6 @@ const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60;
 const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 12;
 const DEFAULT_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER = 1;
 const IN_FLIGHT_ATTEMPT_STALE_SECONDS = 300;
-const DEFAULT_CLOUDFLARE_ACCOUNT_ID = "6d6529fc50727497faffecc2e510e191";
 const DEFAULT_AI_GATEWAY_ID = "default";
 const DEFAULT_TRANSCRIPTION_LANGUAGE = "en";
 const DEFAULT_TRANSCRIPTION_CONTEXT =
@@ -281,8 +280,8 @@ app.get("/health", (c) =>
     cleanupTimeoutMs: cleanupTimeoutMs(c.env),
     aiGatewayId: aiGatewayId(c.env),
     cleanupTier: normalizeCleanupTier(c.env.CLEANUP_TIER),
-    authConfigured: Boolean(c.env.BETTER_AUTH_SECRET && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
-    polarConfigured: Boolean(c.env.POLAR_ACCESS_TOKEN && c.env.POLAR_PRO_PRODUCT_ID)
+    authConfigured: hasConfig(c.env.BETTER_AUTH_SECRET) && hasConfig(c.env.GOOGLE_CLIENT_ID) && hasConfig(c.env.GOOGLE_CLIENT_SECRET),
+    polarConfigured: isPolarConfigured(c.env)
   })
 );
 
@@ -814,12 +813,12 @@ function createAuth(env: Env) {
   return betterAuth({
     appName: "Laryn",
     baseURL: betterAuthUrl(env),
-    secret: env.BETTER_AUTH_SECRET || "replace-with-BETTER_AUTH_SECRET-before-production",
+    secret: requiredConfig(env.BETTER_AUTH_SECRET, "BETTER_AUTH_SECRET"),
     database: env.DB as unknown as Parameters<typeof betterAuth>[0]["database"],
     socialProviders: {
       google: {
-        clientId: env.GOOGLE_CLIENT_ID || "missing-google-client-id",
-        clientSecret: env.GOOGLE_CLIENT_SECRET || "missing-google-client-secret",
+        clientId: requiredConfig(env.GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID"),
+        clientSecret: requiredConfig(env.GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET"),
         prompt: "select_account"
       }
     },
@@ -829,7 +828,7 @@ function createAuth(env: Env) {
         createCustomerOnSignUp: true,
         use: [
           checkout({
-            products: [{ productId: env.POLAR_PRO_PRODUCT_ID || "missing-polar-pro-product-id", slug: "pro" }],
+            products: [{ productId: requiredConfig(env.POLAR_PRO_PRODUCT_ID, "POLAR_PRO_PRODUCT_ID"), slug: "pro" }],
             successUrl: "/app/billing/success?checkout_id={CHECKOUT_ID}",
             returnUrl: "/app",
             authenticatedUsersOnly: true
@@ -837,7 +836,7 @@ function createAuth(env: Env) {
           portal({ returnUrl: `${publicAppUrl(env)}/app` }),
           usage(),
           webhooks({
-            secret: env.POLAR_WEBHOOK_SECRET || "missing-polar-webhook-secret",
+            secret: requiredConfig(env.POLAR_WEBHOOK_SECRET, "POLAR_WEBHOOK_SECRET"),
             onPayload: (payload) => syncPolarPayload(env, payload),
             onCustomerStateChanged: (payload) => syncPolarPayload(env, payload),
             onSubscriptionActive: (payload) => syncPolarPayload(env, payload),
@@ -854,13 +853,13 @@ function createAuth(env: Env) {
 
 function createPolarClient(env: Env): Polar {
   return new Polar({
-    accessToken: env.POLAR_ACCESS_TOKEN || "missing-polar-access-token",
+    accessToken: requiredConfig(env.POLAR_ACCESS_TOKEN, "POLAR_ACCESS_TOKEN"),
     server: env.POLAR_SERVER === "production" ? "production" : "sandbox"
   });
 }
 
 function isPolarConfigured(env: Env): boolean {
-  return Boolean(env.POLAR_ACCESS_TOKEN && env.POLAR_PRO_PRODUCT_ID);
+  return hasConfig(env.POLAR_ACCESS_TOKEN) && hasConfig(env.POLAR_PRO_PRODUCT_ID) && hasConfig(env.POLAR_WEBHOOK_SECRET);
 }
 
 async function ensurePolarCustomer(env: Env, user: AuthSession["user"]): Promise<void> {
@@ -3048,7 +3047,7 @@ function transcriptionPrompt(env: Env): string {
 }
 
 function cloudflareAccountId(env: Env): string {
-  return env.CLOUDFLARE_ACCOUNT_ID || DEFAULT_CLOUDFLARE_ACCOUNT_ID;
+  return requiredConfig(env.CLOUDFLARE_ACCOUNT_ID, "CLOUDFLARE_ACCOUNT_ID");
 }
 
 function polarUsageEventName(env: Pick<Env, "POLAR_USAGE_EVENT_NAME">): string {
@@ -3334,6 +3333,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function hasConfig(value: string | undefined): value is string {
+  if (!value?.trim()) {
+    return false;
+  }
+
+  return !isPlaceholderConfigValue(value);
+}
+
+function requiredConfig(value: string | undefined, name: string): string {
+  if (!hasConfig(value)) {
+    throw new Error(`${name} is not configured`);
+  }
+
+  return value.trim();
+}
+
+function isPlaceholderConfigValue(value: string): boolean {
+  return /^(your_|replace_|example|placeholder|changeme|change_me|dummy|test|sandbox|<|\$\{\{|missing-|00000000-0000-0000-0000-000000000000)/i.test(
+    value.trim()
+  );
+}
+
 function formatError(error: unknown): { name?: string; message: string; stack?: string } {
   if (error instanceof Error) {
     return {
@@ -3383,11 +3404,15 @@ function publicAppUrl(env: Env): string {
 }
 
 function updateBaseUrl(env: Pick<Env, "LARYN_UPDATE_BASE_URL">): string {
-  return (env.LARYN_UPDATE_BASE_URL || "https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev").replace(/\/$/, "");
+  return (env.LARYN_UPDATE_BASE_URL || "").replace(/\/$/, "");
 }
 
 async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
   const baseUrl = updateBaseUrl(env);
+  if (!baseUrl) {
+    return null;
+  }
+
   const response = await fetch(`${baseUrl}/latest.yml`, {
     cf: { cacheTtl: 60, cacheEverything: true }
   });
