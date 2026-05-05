@@ -24,6 +24,10 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
 
   --radius-sm: calc(var(--radius) - 3px);
   --radius-md: calc(var(--radius) - 2px);
@@ -33,26 +37,30 @@
 :root {
   color-scheme: dark;
   --radius: 0.5rem;
-  --background: 150 6% 8%;
-  --foreground: 48 22% 92%;
-  --card: 150 5% 11%;
-  --card-foreground: 48 22% 92%;
-  --card-elevated: 154 7% 14%;
-  --popover: 150 5% 11%;
-  --popover-foreground: 48 22% 92%;
-  --primary: 145 59% 66%;
-  --primary-foreground: 150 16% 9%;
-  --secondary: 154 7% 17%;
-  --secondary-foreground: 48 22% 92%;
-  --muted: 154 7% 17%;
-  --muted-foreground: 50 8% 66%;
-  --accent: 41 85% 66%;
-  --accent-foreground: 150 16% 9%;
-  --destructive: 2 78% 64%;
-  --destructive-foreground: 48 22% 96%;
-  --border: 154 6% 22%;
-  --input: 154 6% 22%;
-  --ring: 145 59% 66%;
+  --background: 220 43% 4%;
+  --foreground: 215 33% 93%;
+  --card: 216 42% 9%;
+  --card-foreground: 215 33% 93%;
+  --card-elevated: 217 38% 12%;
+  --popover: 216 42% 9%;
+  --popover-foreground: 215 33% 93%;
+  --primary: 222 100% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 38% 12%;
+  --secondary-foreground: 215 33% 93%;
+  --muted: 219 40% 16%;
+  --muted-foreground: 216 19% 71%;
+  --accent: 218 100% 65%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 353 100% 69%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 158 64% 52%;
+  --success-foreground: 220 43% 4%;
+  --warning: 34 89% 65%;
+  --warning-foreground: 220 43% 4%;
+  --border: 218 18% 20%;
+  --input: 218 18% 20%;
+  --ring: 218 100% 65%;
 }
 
 html {
@@ -69,8 +77,9 @@ body,
 
 body {
   background:
-    linear-gradient(90deg, hsl(154 5% 12% / 0.3) 1px, transparent 1px),
-    linear-gradient(180deg, hsl(154 5% 12% / 0.3) 1px, transparent 1px),
+    radial-gradient(circle at 18% -12%, hsl(var(--primary) / 0.14), transparent 34rem),
+    linear-gradient(90deg, hsl(215 33% 93% / 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, hsl(215 33% 93% / 0.025) 1px, transparent 1px),
     hsl(var(--background));
   background-size: 44px 44px;
   color: hsl(var(--foreground));

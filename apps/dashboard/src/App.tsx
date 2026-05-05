@@ -27,6 +27,7 @@ import { Progress } from "./components/ui/progress";
 import { Separator } from "./components/ui/separator";
 import { Skeleton } from "./components/ui/skeleton";
 import { cn } from "./lib/utils";
+import logoUrl from "../../../logo.svg";
 
 type AuthenticatedAccount = AccountStatus & {
   authenticated: true;
@@ -288,9 +289,7 @@ function DashboardTopbar({
     <header className="sticky top-0 z-20 border-b border-border bg-background/88 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <a className="flex min-w-0 items-center gap-3" href="/app" aria-label="Laryn dashboard">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg border border-primary/30 bg-primary text-primary-foreground shadow-[0_0_26px_hsl(var(--primary)/.22)]">
-            <span className="h-4 w-3 rounded-b-full rounded-t-md border-2 border-current border-t-0" />
-          </span>
+          <img className="size-8 shrink-0 rounded-lg shadow-[0_0_26px_hsl(var(--primary)/.22)]" src={logoUrl} alt="" aria-hidden="true" />
           <span className="grid leading-tight">
             <strong className="text-sm font-semibold">Laryn</strong>
             <span className="text-xs text-muted-foreground">Account</span>
@@ -393,17 +392,17 @@ function DeviceApproval({
 function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) {
   const icon =
     notice.tone === "success" ? (
-      <CheckCircle2 className="mt-0.5 size-5 text-emerald-300" />
+      <CheckCircle2 className="mt-0.5 size-5 text-success" />
     ) : (
-      <CircleAlert className={cn("mt-0.5 size-5", notice.tone === "warning" ? "text-amber-300" : "text-red-300")} />
+      <CircleAlert className={cn("mt-0.5 size-5", notice.tone === "warning" ? "text-warning" : "text-destructive")} />
     );
 
   return (
     <Alert
       className={cn(
-        notice.tone === "success" && "border-emerald-400/30 bg-emerald-400/10",
-        notice.tone === "warning" && "border-amber-400/35 bg-amber-400/10",
-        notice.tone === "error" && "border-red-400/35 bg-red-400/10"
+        notice.tone === "success" && "border-success/30 bg-success/10",
+        notice.tone === "warning" && "border-warning/35 bg-warning/10",
+        notice.tone === "error" && "border-destructive/35 bg-destructive/10"
       )}
     >
       {icon}
@@ -606,7 +605,7 @@ function UsageCard({
           </div>
           <Progress
             value={percent}
-            indicatorClassName={overageCents > 0 ? "bg-amber-300" : "bg-primary"}
+            indicatorClassName={overageCents > 0 ? "bg-warning" : "bg-primary"}
           />
           <div className="flex justify-between gap-4 text-sm text-muted-foreground">
             <span>{dollars(remainingCents)} left</span>
@@ -614,7 +613,7 @@ function UsageCard({
           </div>
         </div>
         {overageCents > 0 ? (
-          <div className="rounded-lg border border-amber-400/35 bg-amber-400/10 p-3 text-sm text-amber-100">
+          <div className="rounded-lg border border-warning/35 bg-warning/10 p-3 text-sm text-warning">
             Usage past the included credit is billed through Polar at cost this month.
           </div>
         ) : null}
