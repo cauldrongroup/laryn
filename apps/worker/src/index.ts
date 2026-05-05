@@ -203,6 +203,7 @@ const CLEANUP_USER_PROMPT_SUFFIX = `
 </transcript>`;
 
 const app = new Hono<{ Bindings: Env }>();
+const DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS = 1_500;
 
 app.use(
   "/health/*",
@@ -286,7 +287,7 @@ app.get("/health", (c) =>
 );
 
 app.get("/health/auth", async (c) => {
-  const authorized = await authorizeDesktop(c.req.raw, c.env);
+  const authorized = await authorizeDesktop(c.req.raw, c.env, { liveBilling: true });
   if (!authorized) {
     return c.json<TranscriptionError>({ error: "Unauthorized" }, 401);
   }
@@ -947,7 +948,11 @@ function isAuthSession(value: unknown): value is AuthSession {
   return isRecord(value) && isRecord(value.user) && typeof value.user.id === "string" && typeof value.user.email === "string" && typeof value.user.name === "string";
 }
 
-async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuthorization | null> {
+async function authorizeDesktop(
+  request: Request,
+  env: Env,
+  options: { liveBilling?: boolean } = {}
+): Promise<DesktopAuthorization | null> {
   const authorization = request.headers.get("authorization") ?? "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
   if (!token) {
@@ -967,7 +972,9 @@ async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuth
     return null;
   }
 
-  const billing = await getCachedBilling(env, device.user_id);
+  const billing = options.liveBilling
+    ? await getDesktopAuthLiveBilling(env, device.user_id)
+    : await getCachedBilling(env, device.user_id);
 
   return {
     deviceId: device.id,
@@ -975,6 +982,27 @@ async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuth
     deviceName: device.device_name,
     billing
   };
+}
+
+async function getDesktopAuthLiveBilling(env: Env, userId: string): Promise<AccountBillingStatus> {
+  try {
+    return await withTimeout(
+      getBilling(env, userId),
+      DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS,
+      `desktop auth billing timed out after ${DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS}ms`
+    );
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "desktop-auth:live-billing-fallback",
+        userId,
+        timeoutMs: DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS,
+        error: formatError(error)
+      })
+    );
+    return getCachedBilling(env, userId);
+  }
 }
 
 async function getBilling(env: Env, userId: string): Promise<AccountBillingStatus> {
