@@ -250,6 +250,14 @@ app.get("/downloads/laryn-windows-latest.exe", async (c) => {
 
   return c.redirect(installerUrl, 302);
 });
+app.get("/downloads/laryn-mac-latest.dmg", async (c) => {
+  const installerUrl = await latestMacDmgUrl(c.env);
+  if (!installerUrl) {
+    return c.text("Latest macOS disk image is not available yet.", 503);
+  }
+
+  return c.redirect(installerUrl, 302);
+});
 app.get("/app/assets/dashboard.css", (c) => {
   c.header("cache-control", "public, max-age=31536000, immutable");
   c.header("content-type", "text/css; charset=utf-8");
@@ -2033,13 +2041,13 @@ function renderMarketingPage(env: Env, page: "home" | "pricing" | "download"): s
     page === "pricing"
       ? "Pricing — Laryn Pro"
       : page === "download"
-        ? "Download Laryn for Windows"
+        ? "Download Laryn"
         : "Laryn — press, speak, pasted.";
   const description =
     page === "pricing"
       ? "Laryn Pro is $5 a month with $3 of dictation included. No seats, no markup, no surprise charges."
       : page === "download"
-        ? "Install Laryn for Windows in under a minute. Sign in with Google, then dictate into any app you have open."
+        ? "Install Laryn for Windows or macOS. Sign in with Google, then dictate into any app you have open."
         : "Hold a hotkey, talk normally, and Laryn pastes clean punctuated text into whatever app is focused. Notes, replies, drafts — faster than typing.";
   const body =
     page === "pricing"
@@ -2098,7 +2106,7 @@ function marketingFooter(): string {
     <div class="site-footer-inner">
       <div class="footer-brand">
         ${brandLink("md")}
-        <p>Talk into anything on Windows. Laryn turns speech into clean, ready-to-send text — wherever your cursor is.</p>
+        <p>Talk into anything. Laryn turns speech into clean, ready-to-send text — wherever your cursor is.</p>
       </div>
       <div class="footer-cols">
         <div>
@@ -2127,8 +2135,8 @@ function marketingFooter(): string {
       </div>
     </div>
     <div class="site-footer-bottom">
-      <small>© ${new Date().getFullYear()} Laryn. Made for Windows.</small>
-      <small>Windows 10 + 11 · 64-bit</small>
+      <small>© ${new Date().getFullYear()} Laryn. Made for desktop dictation.</small>
+      <small>Windows 10 + 11 · macOS Apple Silicon</small>
     </div>
   </footer>`;
 }
@@ -2555,14 +2563,45 @@ function downloadBody(appUrl: string): string {
     <section class="hero hero-compact">
       <div class="hero-bg" aria-hidden="true"></div>
       <div class="page-shell hero-shell-centered">
-        <p class="eyebrow"><span class="eyebrow-dot"></span>Download · Windows 10 + 11</p>
-        <h1>Get Laryn for Windows.</h1>
-        <p class="lede">A Windows installer with no drivers or admin gymnastics — sign in once and you're dictating into any focused app.</p>
-        <div class="hero-actions hero-actions-centered">
-          <a class="btn btn-primary btn-lg" href="${appUrl}/downloads/laryn-windows-latest.exe">Download for Windows · .exe</a>
-          <a class="link-action" href="${appUrl}/app"><span>Open account first</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
-        </div>
-        <p class="download-meta">Latest build · Windows 10 (1903+) and Windows 11 · 64-bit only</p>
+        <p class="eyebrow"><span class="eyebrow-dot"></span>Download</p>
+        <h1>Get Laryn for your desktop.</h1>
+        <p class="lede">Install the latest release, sign in once, and start dictating into the app that already has your cursor.</p>
+      </div>
+    </section>
+
+    <section class="section section-download-options">
+      <div class="page-shell download-options">
+        <article class="download-card download-card-primary">
+          <div class="download-card-head">
+            <span class="badge badge-brand">Recommended</span>
+            <span class="download-platform">Windows</span>
+          </div>
+          <h2>Windows installer</h2>
+          <p>Best-supported release path. Installs Laryn, creates shortcuts, and keeps background updates wired to the Windows update feed.</p>
+          <dl class="download-facts">
+            <div><dt>OS</dt><dd>Windows 10 1903+ or Windows 11</dd></div>
+            <div><dt>Arch</dt><dd>x64</dd></div>
+            <div><dt>File</dt><dd>.exe installer</dd></div>
+          </dl>
+          <a class="btn btn-primary btn-lg btn-block" href="${appUrl}/downloads/laryn-windows-latest.exe">Download for Windows</a>
+        </article>
+        <article class="download-card">
+          <div class="download-card-head">
+            <span class="badge badge-warn">Early build</span>
+            <span class="download-platform">macOS</span>
+          </div>
+          <h2>Mac disk image</h2>
+          <p>Apple Silicon build for testing. It is not notarized yet, so macOS may require approval in Privacy &amp; Security the first time you open it.</p>
+          <dl class="download-facts">
+            <div><dt>OS</dt><dd>macOS 12+</dd></div>
+            <div><dt>Arch</dt><dd>Apple Silicon</dd></div>
+            <div><dt>File</dt><dd>.dmg disk image</dd></div>
+          </dl>
+          <a class="btn btn-secondary btn-lg btn-block" href="${appUrl}/downloads/laryn-mac-latest.dmg">Download for macOS</a>
+        </article>
+      </div>
+      <div class="page-shell">
+        <p class="download-meta">Download links always redirect to the latest published build.</p>
       </div>
     </section>
 
@@ -2575,7 +2614,7 @@ function downloadBody(appUrl: string): string {
         <li class="flow-step">
           <div class="flow-step-num">01</div>
           <h3>Install Laryn</h3>
-          <p>Run the installer and Laryn opens straight to the dictation panel. No reboot required.</p>
+          <p>Run the Windows installer or open the macOS disk image and move Laryn into Applications.</p>
         </li>
         <li class="flow-step">
           <div class="flow-step-num">02</div>
@@ -2596,11 +2635,11 @@ function downloadBody(appUrl: string): string {
           <p class="eyebrow"><span class="eyebrow-dot"></span>System</p>
           <h3>Requirements</h3>
           <dl class="spec-list">
-            <div class="spec-row"><dt>OS</dt><dd>Windows 10 1903+ or Windows 11</dd></div>
-            <div class="spec-row"><dt>Architecture</dt><dd>x64</dd></div>
+            <div class="spec-row"><dt>Windows</dt><dd>Windows 10 1903+ or Windows 11, x64</dd></div>
+            <div class="spec-row"><dt>macOS</dt><dd>macOS 12+ on Apple Silicon</dd></div>
             <div class="spec-row"><dt>RAM</dt><dd>4 GB minimum, 8 GB recommended</dd></div>
             <div class="spec-row"><dt>Disk</dt><dd>Several hundred MB after install</dd></div>
-            <div class="spec-row"><dt>Mic</dt><dd>Any input recognized by Windows</dd></div>
+            <div class="spec-row"><dt>Mic</dt><dd>Any system-recognized microphone</dd></div>
             <div class="spec-row"><dt>Network</dt><dd>Internet for transcription</dd></div>
           </dl>
         </article>
@@ -2610,9 +2649,9 @@ function downloadBody(appUrl: string): string {
           <div class="hotkey-display">
             <kbd class="kbd-lg">Ctrl</kbd>
             <span class="hotkey-plus">+</span>
-            <kbd class="kbd-lg">Win</kbd>
+            <kbd class="kbd-lg">Super</kbd>
           </div>
-          <p>The default shortcut. If your keyboard layout doesn't play nicely with two-key holds, Laryn quietly switches to <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Space</kbd>.</p>
+          <p>The default shortcut. On Windows this is <kbd>Ctrl</kbd>+<kbd>Win</kbd>; on macOS this maps to the system modifier Laryn can register globally.</p>
           <p class="muted">Pick any combination you like — change it any time from Settings → Hotkey.</p>
         </article>
       </div>
@@ -2810,7 +2849,21 @@ function marketingCss(): string {
 .hero-meta li{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-soft)}
 .hero-meta-dot{width:7px;height:7px;border-radius:999px;background:var(--text-mute);flex:0 0 auto}
 .dot-good.hero-meta-dot,.hero-meta-dot.dot-good{background:var(--good);box-shadow:0 0 12px rgba(52,211,153,.5)}
-.download-meta{margin-top:18px;color:var(--text-mute);font-size:13px}
+.download-meta{margin-top:18px;color:var(--text-mute);font-size:13px;text-align:center}
+
+/* ---------- Download choices ---------- */
+.section-download-options{padding-top:0}
+.download-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-bottom:18px}
+.download-card{padding:30px;border-radius:var(--radius-lg);background:linear-gradient(180deg,rgba(22,34,58,.62),rgba(13,22,34,.78));box-shadow:inset 0 0 0 1px var(--line-strong);display:flex;flex-direction:column;gap:16px}
+.download-card-primary{box-shadow:inset 0 0 0 1px rgba(79,143,255,.36),0 24px 70px -42px rgba(47,111,255,.55)}
+.download-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.download-platform{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute)}
+.download-card h2{font-size:28px;line-height:1.1;font-weight:600;letter-spacing:-0.018em;color:var(--text)}
+.download-card p{font-size:15px;line-height:1.55;color:var(--text-soft)}
+.download-facts{display:grid;gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line);margin:4px 0 6px}
+.download-facts div{display:grid;grid-template-columns:86px 1fr;gap:12px;background:rgba(255,255,255,.025);padding:11px 13px}
+.download-facts dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:700}
+.download-facts dd{font-size:13px;color:var(--text);min-width:0}
 
 /* ---------- Hero preview ---------- */
 .hero-preview{position:relative;display:grid;align-items:center;justify-items:end;min-width:0;padding-bottom:54px}
@@ -2995,7 +3048,7 @@ function marketingCss(): string {
 @media(max-width:860px){
   .site-nav{display:none}
   .flow,.case-grid,.why-grid{grid-template-columns:1fr}
-  .specs-grid,.faq-grid{grid-template-columns:1fr}
+  .download-options,.specs-grid,.faq-grid{grid-template-columns:1fr}
   .footer-cols{grid-template-columns:repeat(2,minmax(0,1fr))}
   .site-footer-inner{grid-template-columns:1fr;gap:32px}
   .cta-band{grid-template-columns:1fr;gap:24px;text-align:left}
@@ -3436,12 +3489,21 @@ function updateBaseUrl(env: Pick<Env, "LARYN_UPDATE_BASE_URL">): string {
 }
 
 async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
+  return latestUpdateArtifactUrl(env, "latest.yml", ".exe");
+}
+
+async function latestMacDmgUrl(env: Env): Promise<string | null> {
+  return latestUpdateArtifactUrl(env, "latest-mac.yml", ".dmg");
+}
+
+async function latestUpdateArtifactUrl(env: Env, feedName: "latest.yml" | "latest-mac.yml", extension: string): Promise<string | null> {
   const baseUrl = updateBaseUrl(env);
   if (!baseUrl) {
     return null;
   }
 
-  const response = await fetch(`${baseUrl}/latest.yml`, {
+  const feedUrl = `${baseUrl}/${feedName}`;
+  const response = await fetch(feedUrl, {
     cf: { cacheTtl: 60, cacheEverything: true }
   });
 
@@ -3449,31 +3511,36 @@ async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
     console.warn(
       JSON.stringify({
         level: "warn",
-        event: "download:latest-yml-failed",
+        event: "download:update-feed-failed",
+        feedName,
         status: response.status,
-        url: `${baseUrl}/latest.yml`
+        url: feedUrl
       })
     );
     return null;
   }
 
   const latestYml = await response.text();
-  const installerUrl = latestWindowsInstallerUrlFromYml(baseUrl, latestYml);
-  if (!installerUrl) {
-    console.warn(JSON.stringify({ level: "warn", event: "download:latest-yml-missing-installer" }));
+  const artifactUrl = latestArtifactUrlFromYml(baseUrl, latestYml, extension);
+  if (!artifactUrl) {
+    console.warn(JSON.stringify({ level: "warn", event: "download:update-feed-missing-artifact", feedName, extension }));
     return null;
   }
 
-  return installerUrl;
+  return artifactUrl;
 }
 
 export function latestWindowsInstallerUrlFromYml(baseUrl: string, latestYml: string): string | null {
-  const installerPath = extractLatestInstallerPath(latestYml);
-  if (!installerPath) {
+  return latestArtifactUrlFromYml(baseUrl, latestYml, ".exe");
+}
+
+export function latestArtifactUrlFromYml(baseUrl: string, latestYml: string, extension: string): string | null {
+  const artifactPath = extractLatestArtifactPath(latestYml, extension);
+  if (!artifactPath) {
     return null;
   }
 
-  const encodedPath = installerPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  const encodedPath = artifactPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
   try {
     return new URL(encodedPath, `${baseUrl.replace(/\/$/, "")}/`).toString();
   } catch {
@@ -3482,41 +3549,64 @@ export function latestWindowsInstallerUrlFromYml(baseUrl: string, latestYml: str
 }
 
 export function extractLatestInstallerPath(latestYml: string): string {
+  return extractLatestArtifactPath(latestYml, ".exe");
+}
+
+export function extractLatestArtifactPath(latestYml: string, extension: string): string {
+  const normalizedExtension = normalizeArtifactExtension(extension);
+  if (!normalizedExtension) {
+    return "";
+  }
+
   const pathMatch = latestYml.match(/^path:\s*["']?([^"'\r\n]+)["']?\s*$/m);
   if (pathMatch?.[1]) {
-    const installerPath = normalizeInstallerPath(pathMatch[1]);
-    if (installerPath) {
-      return installerPath;
+    const artifactPath = normalizeArtifactPath(pathMatch[1], normalizedExtension);
+    if (artifactPath) {
+      return artifactPath;
     }
   }
 
-  const urlMatch = latestYml.match(/^\s*-\s*url:\s*["']?([^"'\r\n]+\.exe)["']?\s*$/m);
-  return normalizeInstallerPath(urlMatch?.[1] || "");
+  const urlPattern = new RegExp(`^\\s*-\\s*url:\\s*["']?([^"'\\r\\n]+${escapeRegExp(normalizedExtension)})["']?\\s*$`, "im");
+  const urlMatch = latestYml.match(urlPattern);
+  return normalizeArtifactPath(urlMatch?.[1] || "", normalizedExtension);
 }
 
-function normalizeInstallerPath(value: string): string {
-  const installerPath = value.trim();
-  if (!installerPath.toLowerCase().endsWith(".exe")) {
+function normalizeArtifactExtension(extension: string): string {
+  const trimmed = extension.trim().toLowerCase();
+  if (!/^\.[a-z0-9]+$/.test(trimmed)) {
+    return "";
+  }
+
+  return trimmed;
+}
+
+function normalizeArtifactPath(value: string, extension: string): string {
+  const artifactPath = value.trim();
+  if (!artifactPath.toLowerCase().endsWith(extension)) {
     return "";
   }
 
   if (
-    /^[a-z][a-z0-9+.-]*:/i.test(installerPath) ||
-    installerPath.startsWith("/") ||
-    installerPath.startsWith("\\") ||
-    installerPath.includes("\\") ||
-    installerPath.includes("?") ||
-    installerPath.includes("#")
+    /^[a-z][a-z0-9+.-]*:/i.test(artifactPath) ||
+    artifactPath.startsWith("/") ||
+    artifactPath.startsWith("\\") ||
+    artifactPath.includes("\\") ||
+    artifactPath.includes("?") ||
+    artifactPath.includes("#")
   ) {
     return "";
   }
 
-  const segments = installerPath.split("/");
+  const segments = artifactPath.split("/");
   if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
     return "";
   }
 
   return segments.join("/");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function safeJson(request: Request): Promise<Record<string, unknown>> {

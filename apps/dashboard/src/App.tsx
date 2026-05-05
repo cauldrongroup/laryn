@@ -350,7 +350,7 @@ function PageHeader({ subtitle }: { subtitle: string }) {
         <Button variant="outline" asChild>
           <a href="/download">
             <Download />
-            Windows installer
+            Download app
           </a>
         </Button>
       </div>
@@ -439,7 +439,7 @@ function SignedOutDashboard({ busy, onSignIn }: { busy: boolean; onSignIn: () =>
           <Button variant="outline" size="lg" asChild>
             <a href="/download">
               <Download />
-              Download for Windows
+              Download app
             </a>
           </Button>
         </div>
@@ -451,7 +451,7 @@ function SignedOutDashboard({ busy, onSignIn }: { busy: boolean; onSignIn: () =>
             Included with Pro
           </div>
           <div className="grid gap-3 text-sm text-muted-foreground">
-            <FeatureRow>Dictation into any focused Windows app</FeatureRow>
+            <FeatureRow>Dictation into any focused desktop app</FeatureRow>
             <FeatureRow>Usage credits tracked against your plan</FeatureRow>
             <FeatureRow>Unlimited paired desktop installs</FeatureRow>
           </div>
@@ -710,7 +710,7 @@ function DevicesCard({
       <CardContent>
         {devices.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-5 text-sm leading-6 text-muted-foreground">
-            Install Laryn for Windows, open Settings, and sign in with the same Google account.
+            Install Laryn, open Settings, and sign in with the same Google account.
           </div>
         ) : (
           <ul className="grid gap-2" role="list">

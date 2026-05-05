@@ -5,7 +5,9 @@ import {
   calculateTranscriptionUsageCost,
   cleanupInputText,
   estimateTokens,
+  extractLatestArtifactPath,
   extractLatestInstallerPath,
+  latestArtifactUrlFromYml,
   latestWindowsInstallerUrlFromYml,
   normalizeDictionaryPayload
 } from "./index";
@@ -205,5 +207,22 @@ describe("desktop update feed parsing", () => {
     expect(extractLatestInstallerPath("path: https://evil.example/Laryn.exe")).toBe("");
     expect(extractLatestInstallerPath("path: ../Laryn.exe")).toBe("");
     expect(extractLatestInstallerPath("path: Laryn.exe?token=abc")).toBe("");
+  });
+
+  it("extracts macOS dmg artifacts from the mac update feed", () => {
+    const latestMacYml = [
+      "version: 0.1.2",
+      "files:",
+      "  - url: Laryn-0.1.2-mac-arm64.zip",
+      "    sha512: zip",
+      "  - url: Laryn-0.1.2-mac-arm64.dmg",
+      "    sha512: dmg",
+      "path: Laryn-0.1.2-mac-arm64.zip"
+    ].join("\n");
+
+    expect(extractLatestArtifactPath(latestMacYml, ".dmg")).toBe("Laryn-0.1.2-mac-arm64.dmg");
+    expect(latestArtifactUrlFromYml("https://updates.example.com/", latestMacYml, ".dmg")).toBe(
+      "https://updates.example.com/Laryn-0.1.2-mac-arm64.dmg"
+    );
   });
 });
