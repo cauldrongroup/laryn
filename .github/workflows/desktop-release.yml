@@ -11,15 +11,89 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release
+  cancel-in-progress: true
+
 env:
   LARYN_UPDATE_BASE_URL: ${{ vars.LARYN_UPDATE_BASE_URL }}
   LARYN_R2_BUCKET: ${{ vars.LARYN_R2_BUCKET }}
   CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
 
 jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_name: ${{ steps.release_name.outputs.name }}
+
+    steps:
+      - name: Validate release configuration
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${LARYN_UPDATE_BASE_URL:-}" ]; then
+            echo "Set repository variable LARYN_UPDATE_BASE_URL to the public R2 URL used by the updater." >&2
+            exit 1
+          fi
+          if [ -z "${LARYN_R2_BUCKET:-}" ]; then
+            echo "Set repository variable LARYN_R2_BUCKET to the R2 bucket name." >&2
+            exit 1
+          fi
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+            echo "Set repository variable CLOUDFLARE_ACCOUNT_ID to the Cloudflare account id." >&2
+            exit 1
+          fi
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+            echo "Set repository secret R2_ACCESS_KEY_ID to the R2 access key id." >&2
+            exit 1
+          fi
+          if [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "Set repository secret R2_SECRET_ACCESS_KEY to the R2 secret access key." >&2
+            exit 1
+          fi
+
+      - name: Resolve release version
+        id: version
+        env:
+          DESKTOP_VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${DESKTOP_VERSION_INPUT}"
+          semver_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+
+          if [[ ! "$version" =~ $semver_pattern ]]; then
+            echo "Version must be semver, received '$version'" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Generate update name
+        id: release_name
+        run: |
+          set -euo pipefail
+          adjectives=(
+            brisk calm clear clever cozy dapper fuzzy gentle glossy golden happy kind
+            lively lucky merry nimble polished quick quiet radiant snappy steady sunny tidy
+          )
+          objects=(
+            anchor atlas badge beacon button cactus camera comet compass crane dolphin falcon
+            fern lantern maple otter pencil rocket saffron sparrow teacup violet wallet window
+          )
+
+          adjective="${adjectives[$RANDOM % ${#adjectives[@]}]}"
+          object="${objects[$RANDOM % ${#objects[@]}]}"
+          echo "name=$adjective-$object" >> "$GITHUB_OUTPUT"
+
   windows:
     name: Build Windows Installer
     runs-on: windows-latest
+    needs: prepare
 
     steps:
       - name: Check out repository
@@ -42,68 +116,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate update release configuration
-        shell: pwsh
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          if (-not $env:LARYN_UPDATE_BASE_URL) {
-            throw "Set repository variable LARYN_UPDATE_BASE_URL to the public R2 URL used by the updater."
-          }
-          if (-not $env:LARYN_R2_BUCKET) {
-            throw "Set repository variable LARYN_R2_BUCKET to the R2 bucket name."
-          }
-          if (-not $env:CLOUDFLARE_ACCOUNT_ID) {
-            throw "Set repository variable CLOUDFLARE_ACCOUNT_ID to the Cloudflare account id."
-          }
-          if (-not $env:AWS_ACCESS_KEY_ID) {
-            throw "Set repository secret R2_ACCESS_KEY_ID to the R2 access key id."
-          }
-          if (-not $env:AWS_SECRET_ACCESS_KEY) {
-            throw "Set repository secret R2_SECRET_ACCESS_KEY to the R2 secret access key."
-          }
-
-      - name: Resolve release version
-        id: version
-        shell: pwsh
-        run: |
-          $version = "${{ inputs.version }}"
-
-          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
-            throw "Version must be semver, received '$version'"
-          }
-
-          "version=$version" >> $env:GITHUB_OUTPUT
-
-      - name: Generate update name
-        id: release_name
-        shell: pwsh
-        run: |
-          $adjectives = @(
-            "brisk", "calm", "clear", "clever", "cozy", "dapper", "fuzzy", "gentle",
-            "glossy", "golden", "happy", "kind", "lively", "lucky", "merry", "nimble",
-            "polished", "quick", "quiet", "radiant", "snappy", "steady", "sunny", "tidy"
-          )
-          $objects = @(
-            "anchor", "atlas", "badge", "beacon", "button", "cactus", "camera", "comet",
-            "compass", "crane", "dolphin", "falcon", "fern", "lantern", "maple", "otter",
-            "pencil", "rocket", "saffron", "sparrow", "teacup", "violet", "wallet", "window"
-          )
-
-          $adjective = $adjectives | Get-Random
-          $object = $objects | Get-Random
-          $name = "$adjective-$object"
-          "name=$name" >> $env:GITHUB_OUTPUT
-
       - name: Stamp desktop package version
         shell: pwsh
+        env:
+          DESKTOP_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
         run: |
-          $packagePath = "apps/desktop/package.json"
-          $package = Get-Content $packagePath -Raw | ConvertFrom-Json
-          $package.version = "${{ steps.version.outputs.version }}"
-          $package | Add-Member -NotePropertyName releaseName -NotePropertyValue "${{ steps.release_name.outputs.name }}" -Force
-          $package | ConvertTo-Json -Depth 20 | Set-Content $packagePath
+          node -e "const fs = require('node:fs'); const p = 'apps/desktop/package.json'; const pkg = JSON.parse(fs.readFileSync(p, 'utf8')); pkg.version = process.env.DESKTOP_VERSION; pkg.releaseName = process.env.RELEASE_NAME; fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');"
 
       - name: Typecheck
         run: pnpm typecheck
@@ -111,11 +130,11 @@ jobs:
       - name: Build installer and update metadata
         run: pnpm desktop:dist:win
 
-      - name: Verify release files
+      - name: Verify Windows release files
         shell: pwsh
         run: |
           $releaseDir = "apps/desktop/release"
-          $expectedVersion = "${{ steps.version.outputs.version }}"
+          $expectedVersion = "${{ needs.prepare.outputs.version }}"
           $expectedInstaller = "Laryn-$expectedVersion-win-x64.exe"
           $required = @(
             "$releaseDir/latest.yml",
@@ -139,74 +158,244 @@ jobs:
             throw "latest.yml does not reference $expectedInstaller."
           }
 
+      - name: Upload Windows release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-release
+          retention-days: 7
+          path: |
+            apps/desktop/release/latest.yml
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
+
+  macos:
+    name: Build macOS App
+    runs-on: macos-15
+    needs: prepare
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Secret scan
+        run: pnpm security:scan
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stamp desktop package version
+        env:
+          DESKTOP_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_NAME: ${{ needs.prepare.outputs.release_name }}
+        run: |
+          node -e "const fs = require('node:fs'); const p = 'apps/desktop/package.json'; const pkg = JSON.parse(fs.readFileSync(p, 'utf8')); pkg.version = process.env.DESKTOP_VERSION; pkg.releaseName = process.env.RELEASE_NAME; fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');"
+
+      - name: Typecheck desktop
+        run: pnpm --filter @laryn/desktop typecheck
+
+      - name: Build disk image and update metadata
+        run: pnpm desktop:dist:mac
+
+      - name: Verify macOS release files
+        run: |
+          set -euo pipefail
+          release_dir="apps/desktop/release"
+          expected_version="${{ needs.prepare.outputs.version }}"
+          expected_dmg="Laryn-$expected_version-mac-arm64.dmg"
+          expected_zip="Laryn-$expected_version-mac-arm64.zip"
+          required=(
+            "$release_dir/latest-mac.yml"
+            "$release_dir/$expected_dmg"
+            "$release_dir/$expected_dmg.blockmap"
+            "$release_dir/$expected_zip"
+            "$release_dir/$expected_zip.blockmap"
+          )
+
+          for file in "${required[@]}"; do
+            if [ ! -f "$file" ]; then
+              find "$release_dir" -maxdepth 1 -type f -print
+              echo "Missing release file: $file" >&2
+              exit 1
+            fi
+          done
+
+          if ! grep -Eq "^version:[[:space:]]*$expected_version[[:space:]]*$" "$release_dir/latest-mac.yml"; then
+            echo "latest-mac.yml does not advertise version $expected_version." >&2
+            exit 1
+          fi
+          if ! grep -Fq "$expected_dmg" "$release_dir/latest-mac.yml"; then
+            echo "latest-mac.yml does not reference $expected_dmg." >&2
+            exit 1
+          fi
+          if ! grep -Fq "$expected_zip" "$release_dir/latest-mac.yml"; then
+            echo "latest-mac.yml does not reference $expected_zip." >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$release_dir/mac-arm64/Laryn.app"
+          hdiutil verify "$release_dir/$expected_dmg"
+          unzip -t -qq "$release_dir/$expected_zip"
+
+          archs="$(lipo -archs "$release_dir/mac-arm64/Laryn.app/Contents/MacOS/Laryn")"
+          if [ "$archs" != "arm64" ]; then
+            echo "Expected arm64 macOS executable, got '$archs'." >&2
+            exit 1
+          fi
+
+      - name: Upload macOS release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-release
+          retention-days: 7
+          path: |
+            apps/desktop/release/latest-mac.yml
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.dmg.blockmap
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.zip.blockmap
+
+  publish:
+    name: Publish Desktop Release
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - windows
+      - macos
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify combined release assets
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          expected_win="Laryn-$version-win-x64.exe"
+          expected_dmg="Laryn-$version-mac-arm64.dmg"
+          expected_zip="Laryn-$version-mac-arm64.zip"
+          required=(
+            "release-assets/latest.yml"
+            "release-assets/latest-mac.yml"
+            "release-assets/$expected_win"
+            "release-assets/$expected_win.blockmap"
+            "release-assets/$expected_dmg"
+            "release-assets/$expected_dmg.blockmap"
+            "release-assets/$expected_zip"
+            "release-assets/$expected_zip.blockmap"
+          )
+
+          for file in "${required[@]}"; do
+            if [ ! -f "$file" ]; then
+              find release-assets -maxdepth 2 -type f -print
+              echo "Missing release asset: $file" >&2
+              exit 1
+            fi
+          done
+
+          grep -Eq "^version:[[:space:]]*$version[[:space:]]*$" release-assets/latest.yml
+          grep -Fq "$expected_win" release-assets/latest.yml
+          grep -Eq "^version:[[:space:]]*$version[[:space:]]*$" release-assets/latest-mac.yml
+          grep -Fq "$expected_dmg" release-assets/latest-mac.yml
+          grep -Fq "$expected_zip" release-assets/latest-mac.yml
+
       - name: Upload GitHub release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Laryn ${{ steps.version.outputs.version }} (${{ steps.release_name.outputs.name }})
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: Laryn ${{ needs.prepare.outputs.version }} (${{ needs.prepare.outputs.release_name }})
           files: |
-            apps/desktop/release/latest.yml
-            apps/desktop/release/*.exe
-            apps/desktop/release/*.blockmap
+            release-assets/latest.yml
+            release-assets/latest-mac.yml
+            release-assets/*.exe
+            release-assets/*.dmg
+            release-assets/*.zip
+            release-assets/*.blockmap
 
-      - name: Publish update feed to R2
-        shell: pwsh
+      - name: Publish update feeds to R2
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          if (-not $env:LARYN_UPDATE_BASE_URL) {
-            throw "Set repository variable LARYN_UPDATE_BASE_URL to the public R2 URL used by the updater."
-          }
-          if (-not $env:LARYN_R2_BUCKET) {
-            throw "Set repository variable LARYN_R2_BUCKET to the R2 bucket name."
-          }
-          if (-not $env:CLOUDFLARE_ACCOUNT_ID) {
-            throw "Set repository variable CLOUDFLARE_ACCOUNT_ID to the Cloudflare account id."
-          }
-          if (-not $env:AWS_ACCESS_KEY_ID) {
-            throw "Set repository secret R2_ACCESS_KEY_ID to the R2 access key id."
-          }
-          if (-not $env:AWS_SECRET_ACCESS_KEY) {
-            throw "Set repository secret R2_SECRET_ACCESS_KEY to the R2 secret access key."
-          }
+          set -euo pipefail
+          endpoint="https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com"
 
-          $releaseDir = "apps/desktop/release"
-          $endpoint = "https://$env:CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com"
-          $files = Get-ChildItem $releaseDir -File | Where-Object {
-            $_.Name -eq "latest.yml" -or $_.Name -like "*.exe" -or $_.Name -like "*.blockmap"
-          }
+          shopt -s nullglob
+          for file in release-assets/*; do
+            name="$(basename "$file")"
+            case "$name" in
+              latest.yml|latest-mac.yml)
+                continue
+                ;;
+              *.dmg)
+                content_type="application/x-apple-diskimage"
+                cache_control="public, max-age=31536000, immutable"
+                ;;
+              *.zip)
+                content_type="application/zip"
+                cache_control="public, max-age=31536000, immutable"
+                ;;
+              *.exe|*.blockmap)
+                content_type="application/octet-stream"
+                cache_control="public, max-age=31536000, immutable"
+                ;;
+              *)
+                continue
+                ;;
+            esac
 
-          foreach ($file in $files) {
-            $contentType = if ($file.Name -eq "latest.yml") { "text/yaml" } else { "application/octet-stream" }
-            $cacheControl = if ($file.Name -eq "latest.yml") { "no-cache" } else { "public, max-age=31536000, immutable" }
-            aws s3 cp "$($file.FullName)" "s3://$env:LARYN_R2_BUCKET/$($file.Name)" --endpoint-url $endpoint --content-type $contentType --cache-control $cacheControl
-          }
+            aws s3 cp "$file" "s3://$LARYN_R2_BUCKET/$name" \
+              --endpoint-url "$endpoint" \
+              --content-type "$content_type" \
+              --cache-control "$cache_control"
+          done
 
-          aws s3 cp "s3://$env:LARYN_R2_BUCKET/latest.yml" "$env:RUNNER_TEMP/latest.yml" --endpoint-url $endpoint
+          for feed in latest.yml latest-mac.yml; do
+            aws s3 cp "release-assets/$feed" "s3://$LARYN_R2_BUCKET/$feed" \
+              --endpoint-url "$endpoint" \
+              --content-type "text/yaml" \
+              --cache-control "no-cache"
+          done
 
-          $expectedVersion = "${{ steps.version.outputs.version }}"
-          $expectedInstaller = "Laryn-$expectedVersion-win-x64.exe"
-          $publicLatestUrl = "$($env:LARYN_UPDATE_BASE_URL.TrimEnd('/'))/latest.yml"
-          $versionPattern = "(?m)^version:\s*$([regex]::Escape($expectedVersion))\s*$"
+      - name: Verify public update feeds
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          expected_win="Laryn-$version-win-x64.exe"
+          expected_dmg="Laryn-$version-mac-arm64.dmg"
+          expected_zip="Laryn-$version-mac-arm64.zip"
+          base_url="${LARYN_UPDATE_BASE_URL%/}"
 
-          for ($attempt = 1; $attempt -le 12; $attempt += 1) {
-            try {
-              $latestResponse = Invoke-WebRequest -Uri $publicLatestUrl -UseBasicParsing -Headers @{ "cache-control" = "no-cache" }
-              $latestBody = [string]$latestResponse.Content
-              if ($latestResponse.StatusCode -eq 200 -and $latestBody -match $versionPattern -and $latestBody.Contains($expectedInstaller)) {
-                break
-              }
-            } catch {
-              if ($attempt -eq 12) {
-                throw "Public update feed is not reachable: $publicLatestUrl"
-              }
-            }
+          for attempt in $(seq 1 12); do
+            windows_body="$(curl -fsSL -H 'cache-control: no-cache' "$base_url/latest.yml" || true)"
+            mac_body="$(curl -fsSL -H 'cache-control: no-cache' "$base_url/latest-mac.yml" || true)"
 
-            if ($attempt -eq 12) {
-              throw "Public update feed did not publish $expectedInstaller at $publicLatestUrl."
-            }
+            if echo "$windows_body" | grep -Eq "^version:[[:space:]]*$version[[:space:]]*$" \
+              && echo "$windows_body" | grep -Fq "$expected_win" \
+              && echo "$mac_body" | grep -Eq "^version:[[:space:]]*$version[[:space:]]*$" \
+              && echo "$mac_body" | grep -Fq "$expected_dmg" \
+              && echo "$mac_body" | grep -Fq "$expected_zip"; then
+              exit 0
+            fi
 
-            Start-Sleep -Seconds 5
-          }
+            sleep 5
+          done
+
+          echo "Public update feeds did not publish expected desktop assets at $base_url." >&2
+          exit 1

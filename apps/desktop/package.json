@@ -18,6 +18,7 @@
     "build:preload": "vite build --config vite.preload.config.ts",
     "build:electron": "pnpm build:main && pnpm build:preload",
     "build": "pnpm build:renderer && pnpm build:electron && electron-builder --dir",
+    "dist:mac": "pnpm build:renderer && pnpm build:electron && electron-builder --mac dmg zip --publish never",
     "dist:win": "pnpm build:renderer && pnpm build:electron && electron-builder --win nsis --publish never",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx"
@@ -57,6 +58,10 @@
       "package.json"
     ],
     "icon": "assets/logo.png",
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**",
+      "node_modules/node-gyp-build/**"
+    ],
     "win": {
       "target": "nsis"
     },

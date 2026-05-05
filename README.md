@@ -121,7 +121,7 @@ Keep the root directory at `/` so pnpm can resolve the workspace package `@laryn
 
 ## Desktop releases
 
-Windows installers are built manually from `.github/workflows/desktop-release.yml`. Open the workflow in GitHub Actions, choose **Run workflow**, and enter the semver version to release.
+Desktop builds are published manually from `.github/workflows/desktop-release.yml`. Open the workflow in GitHub Actions, choose **Run workflow**, and enter the semver version to release.
 
 The workflow expects these GitHub repository variables:
 
@@ -129,7 +129,14 @@ The workflow expects these GitHub repository variables:
 - `LARYN_UPDATE_BASE_URL`: the public base URL for that bucket
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id that owns the bucket
 
-It also needs `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` repository secrets with R2 object write access. Each manual run builds the NSIS installer, generates a friendly two-word update name, uploads the installer assets to the GitHub Release, verifies `latest.yml`, and publishes `latest.yml`, the `.exe`, and the `.blockmap` to R2 for background auto-updates.
+It also needs `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` repository secrets with R2 object write access. Each manual run builds the Windows NSIS installer and the macOS Apple Silicon DMG/ZIP, generates a friendly two-word update name, uploads the desktop assets to the GitHub Release, verifies `latest.yml` and `latest-mac.yml`, and publishes the update feeds plus `.exe`, `.dmg`, `.zip`, and `.blockmap` files to R2.
+
+The hosted download page redirects through these update feeds:
+
+- Windows: `/downloads/laryn-windows-latest.exe`
+- macOS: `/downloads/laryn-mac-latest.dmg`
+
+The macOS build is currently ad-hoc signed and not notarized. It is useful for early testing, but macOS users may need to approve the app in Privacy & Security on first launch.
 
 Installed desktop builds check the R2 update feed after startup, download updates in the background, and install the downloaded update the next time Laryn restarts. When an update is ready, Settings shows an install button that restarts Laryn and applies it. The app version and generated update name are visible in Settings for debug purposes.
 

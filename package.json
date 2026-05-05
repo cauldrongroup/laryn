@@ -22,6 +22,7 @@
     "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
     "desktop:dev:hot": "pnpm --filter @laryn/desktop dev:hot",
     "desktop:build": "pnpm --filter @laryn/desktop build",
+    "desktop:dist:mac": "pnpm --filter @laryn/desktop dist:mac",
     "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win",
     "security:scan": "node scripts/scan-secrets.mjs"
   },
