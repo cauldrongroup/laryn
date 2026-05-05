@@ -4,6 +4,7 @@ import { displayHotkey, formatElapsed, useRecorder } from "./useRecorder";
 import type { FlowState } from "./useRecorder";
 
 const BAR_COUNT = 24;
+const WAVEFORM_BAR_INDICES = Array.from({ length: BAR_COUNT }, (_, index) => index);
 
 export default function OverlayView() {
   const waveformBars = useRef<Array<HTMLSpanElement | null>>([]);
@@ -26,7 +27,12 @@ export default function OverlayView() {
     }
   }, []);
 
-  const recorder = useRecorder({ onWaveformSample, onWaveformReset });
+  const recorder = useRecorder({
+    onWaveformSample,
+    onWaveformReset,
+    checkWorkerOnMount: false,
+    hydrateAudioInputs: false
+  });
   const { status, flowState, elapsedMs, stopRecording } = recorder;
 
   const hotkey = useMemo(() => displayHotkey(status.hotkey), [status.hotkey]);
@@ -52,7 +58,7 @@ export default function OverlayView() {
         </div>
 
         <div className={`wave wave-${flowState} h-10 w-44`}>
-          {Array.from({ length: BAR_COUNT }, (_, index) => (
+          {WAVEFORM_BAR_INDICES.map((index) => (
             <span
               key={index}
               ref={(node) => {

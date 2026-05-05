@@ -47,6 +47,7 @@ pnpm --filter @laryn/worker exec wrangler d1 migrations apply laryn --remote
 
 Update `apps/worker/wrangler.jsonc` with the real D1 `database_id`, then provide:
 
+- `CLOUDFLARE_ACCOUNT_ID`
 - `AI_GATEWAY_ID`
 - `GROQ_API_KEY` when `TRANSCRIPTION_PROVIDER=groq`
 - `BETTER_AUTH_SECRET`
@@ -86,6 +87,8 @@ The Worker uses these model defaults:
 - Cleanup fallback: `@cf/meta/llama-3.1-8b-instruct-fast`
 - Default cleanup tier: `off`
 - Cleanup timeout: `3500ms`, then paste the raw transcript
+- Groq transcription is routed through Cloudflare AI Gateway and metered with `LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE` plus `LARYN_GROQ_MIN_BILLABLE_AUDIO_MS`.
+- Pre-AI usage controls are configured with `LARYN_MONTHLY_USAGE_CAP_UNITS`, `LARYN_RATE_LIMIT_MAX_REQUESTS`, `LARYN_RATE_LIMIT_WINDOW_SECONDS`, and `LARYN_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER`.
 
 For the lowest-cost setup, keep cleanup set to `off`. That uses only the speech-to-text call and skips the second text-generation cleanup call. Switch to `cheap` only when you want punctuation/capitalization cleanup.
 
@@ -122,14 +125,27 @@ Windows installers are built manually from `.github/workflows/desktop-release.ym
 
 The workflow expects these GitHub repository variables:
 
-- `LARYN_R2_BUCKET`: `laryn-updates`
-- `LARYN_UPDATE_BASE_URL`: `https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev`
-- `CLOUDFLARE_ACCOUNT_ID`: `6d6529fc50727497faffecc2e510e191`
+- `LARYN_R2_BUCKET`: the R2 bucket used for auto-update assets
+- `LARYN_UPDATE_BASE_URL`: the public base URL for that bucket
+- `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account id that owns the bucket
 
-It also needs a `CLOUDFLARE_API_TOKEN` repository secret with R2 object write access. Each manual run builds the NSIS installer, generates a friendly two-word update name, uploads the installer assets to the GitHub Release, and publishes `latest.yml`, the `.exe`, and the `.blockmap` to R2 for background auto-updates.
+It also needs `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` repository secrets with R2 object write access. Each manual run builds the NSIS installer, generates a friendly two-word update name, uploads the installer assets to the GitHub Release, verifies `latest.yml`, and publishes `latest.yml`, the `.exe`, and the `.blockmap` to R2 for background auto-updates.
 
-Installed desktop builds check the R2 update feed after startup, download updates in the background, and install the downloaded update the next time Laryn restarts. The app version and generated update name are visible in Settings for debug purposes.
+Installed desktop builds check the R2 update feed after startup, download updates in the background, and install the downloaded update the next time Laryn restarts. When an update is ready, Settings shows an install button that restarts Laryn and applies it. The app version and generated update name are visible in Settings for debug purposes.
 
 ## Hotkey note
 
 The requested binding is `Ctrl + Win`. Windows and Electron can be inconsistent with modifier-only global shortcuts, so the app tries `Control+Super` first and falls back to `Control+Super+Space`. The active binding is shown in the app.
+
+## Open source readiness
+
+Before making the repository public, choose and add a project license. Keep generated secrets in ignored files only, especially `apps/worker/.dev.vars` and `apps/desktop/.env`.
+
+Run the redacted secret scanner before publishing or merging release changes:
+
+```powershell
+pnpm security:scan -- --history
+pnpm security:scan -- --include-ignored
+```
+
+The ignored-file scan will fail when local secret files contain real values. That is expected; rotate any value that was ever committed and do not paste scanner output publicly.

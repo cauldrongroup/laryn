@@ -1,6 +1,7 @@
-import { useMemo } from "react";
-import MainView from "./MainView";
-import OverlayView from "./OverlayView";
+import { Suspense, lazy, useMemo } from "react";
+
+const MainView = lazy(() => import("./MainView"));
+const OverlayView = lazy(() => import("./OverlayView"));
 
 type View = "main" | "overlay";
 
@@ -13,8 +14,16 @@ export default function App() {
   }, []);
 
   if (view === "overlay") {
-    return <OverlayView />;
+    return (
+      <Suspense fallback={null}>
+        <OverlayView />
+      </Suspense>
+    );
   }
 
-  return <MainView />;
+  return (
+    <Suspense fallback={null}>
+      <MainView />
+    </Suspense>
+  );
 }

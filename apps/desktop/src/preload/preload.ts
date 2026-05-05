@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("laryn", {
   ready: () => ipcRenderer.invoke("renderer:ready"),
   setHotkey: (hotkey: string) => ipcRenderer.invoke("settings:set-hotkey", hotkey),
   checkForUpdates: () => ipcRenderer.invoke("updates:check"),
+  installUpdate: () => ipcRenderer.invoke("updates:install"),
   checkWorker: () => ipcRenderer.invoke("worker:check"),
   startDeviceLogin: () => ipcRenderer.invoke("auth:start-device-login"),
   pollDeviceLogin: (deviceCode: string, deviceName?: string) => ipcRenderer.invoke("auth:poll-device-login", deviceCode, deviceName),
@@ -88,7 +89,7 @@ export type DesktopStatus = {
     mode: "native-hold" | "electron-toggle-fallback" | "error";
   };
   isRecording: boolean;
-  updateStatus: "idle" | "checking" | "current" | "downloading" | "ready" | "error" | "disabled";
+  updateStatus: "idle" | "checking" | "current" | "downloading" | "ready" | "restarting" | "error" | "disabled";
   updateMessage: string;
   updateVersion?: string;
   state: "idle" | "recording" | "transcribing" | "pasting" | "error";

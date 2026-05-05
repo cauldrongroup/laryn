@@ -32,4 +32,19 @@ export default [
       "no-undef": "off",
     },
   },
+  {
+    files: ["apps/desktop/src/main/**/*.cjs"],
+    languageOptions: {
+      ecmaVersion: "latest",
+      sourceType: "commonjs",
+      globals: {
+        console: "readonly",
+        require: "readonly",
+        module: "readonly",
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 ];

@@ -11,6 +11,15 @@ type AudioMonitorGraph = {
   analyser: AnalyserNode;
 };
 
+type RecordingSpeechStats = {
+  lastSampleAt: number;
+  sampleCount: number;
+  totalMs: number;
+  voicedMs: number;
+  rmsTotal: number;
+  peak: number;
+};
+
 const INITIAL_STATUS: DesktopStatus = {
   appVersion: "0.0.0",
   authStatus: "signed-out",
@@ -32,11 +41,17 @@ const INITIAL_STATUS: DesktopStatus = {
 export type UseRecorderOptions = {
   onWaveformSample?: (sample: number, index: number, total: number) => void;
   onWaveformReset?: () => void;
+  checkWorkerOnMount?: boolean;
+  hydrateAudioInputs?: boolean;
+  hydrateDictionary?: boolean;
 };
 
 export function useRecorder(options: UseRecorderOptions = {}) {
   const onWaveformSample = options.onWaveformSample;
   const onWaveformReset = options.onWaveformReset;
+  const checkWorkerOnMount = options.checkWorkerOnMount !== false;
+  const hydrateAudioInputs = options.hydrateAudioInputs !== false;
+  const hydrateDictionary = options.hydrateDictionary !== false;
 
   const [status, setStatus] = useState<DesktopStatus>(INITIAL_STATUS);
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
@@ -61,6 +76,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
   const activeStream = useRef<MediaStream | null>(null);
   const animation = useRef<number | null>(null);
   const elapsedTimer = useRef<number | null>(null);
+  const speechStats = useRef<RecordingSpeechStats>(createEmptySpeechStats());
+  const frequencyData = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const timeDomainData = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   useEffect(() => {
     cleanupTierRef.current = cleanupTier;
@@ -84,33 +102,43 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
   useEffect(() => {
     let mounted = true;
-    void window.laryn.ready().then((next) => {
-      if (mounted) setStatus(next);
-    });
-    void window.laryn.checkWorker().then((next) => {
-      if (mounted) setStatus(next);
-    });
-    void window.laryn.listDictionary().then((entries) => {
-      if (mounted) setDictionary(entries);
-    });
-    void refreshAudioInputs();
-
     const removeStatusListener = window.laryn.onStatus((next) => {
       if (mounted) setStatus(next);
     });
     const removeStartListener = window.laryn.onStartRecording(() => void startRecording());
     const removeStopListener = window.laryn.onStopRecording(() => void stopRecording());
-    navigator.mediaDevices?.addEventListener?.("devicechange", refreshAudioInputs);
+    if (hydrateAudioInputs) {
+      navigator.mediaDevices?.addEventListener?.("devicechange", refreshAudioInputs);
+    }
+
+    void window.laryn.ready().then((next) => {
+      if (mounted) setStatus(next);
+    });
+    if (checkWorkerOnMount) {
+      void window.laryn.checkWorker().then((next) => {
+        if (mounted) setStatus(next);
+      });
+    }
+    if (hydrateDictionary) {
+      void window.laryn.listDictionary().then((entries) => {
+        if (mounted) setDictionary(entries);
+      });
+    }
+    if (hydrateAudioInputs) {
+      void refreshAudioInputs();
+    }
 
     return () => {
       mounted = false;
       removeStatusListener();
       removeStartListener();
       removeStopListener();
-      navigator.mediaDevices?.removeEventListener?.("devicechange", refreshAudioInputs);
+      if (hydrateAudioInputs) {
+        navigator.mediaDevices?.removeEventListener?.("devicechange", refreshAudioInputs);
+      }
       cleanupRecordingResources();
     };
-  }, []);
+  }, [checkWorkerOnMount, hydrateAudioInputs, hydrateDictionary]);
 
   async function refreshAudioInputs() {
     try {
@@ -156,14 +184,17 @@ export function useRecorder(options: UseRecorderOptions = {}) {
         selectedAudioInputIdRef.current = "";
         localStorage.setItem("laryn.audioInputId", "");
       });
-      void refreshAudioInputs();
+      if (hydrateAudioInputs) {
+        void refreshAudioInputs();
+      }
       activeStream.current = stream;
       chunks.current = [];
+      speechStats.current = createEmptySpeechStats();
       startedAt.current = performance.now();
       setElapsedMs(0);
       elapsedTimer.current = window.setInterval(() => {
         setElapsedMs(Math.round(performance.now() - startedAt.current));
-      }, 200);
+      }, ELAPSED_TIMER_INTERVAL_MS);
 
       context = new AudioContext();
       audioContext.current = context;
@@ -182,7 +213,7 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       mediaRecorder.onstop = () => {
         void submitRecording(mediaRecorder.mimeType, recordingStream);
       };
-      mediaRecorder.start(250);
+      mediaRecorder.start(MEDIA_RECORDER_TIMESLICE_MS);
       recorder.current = mediaRecorder;
       setRecorderState("recording");
 
@@ -213,13 +244,21 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 
   async function submitRecording(mimeType: string, stream: MediaStream) {
     const durationMs = Math.round(performance.now() - startedAt.current);
+    const detectedSpeechStats = speechStats.current;
     cleanupRecordingResources(stream);
 
     const blob = new Blob(chunks.current, { type: mimeType });
-    if (blob.size === 0 || durationMs < 250) {
+    if (blob.size === 0 || durationMs < MIN_TRANSCRIPTION_DURATION_MS) {
       setRecorderState("idle");
       recorder.current = null;
       window.laryn.recordingCancelled("Hold the hotkey a little longer to dictate");
+      return;
+    }
+
+    if (!hasMeaningfulSpeech(detectedSpeechStats, durationMs)) {
+      setRecorderState("idle");
+      recorder.current = null;
+      window.laryn.recordingCancelled("No speech detected, recording was not sent");
       return;
     }
 
@@ -241,8 +280,9 @@ export function useRecorder(options: UseRecorderOptions = {}) {
     const node = analyser.current;
     if (!node) return;
 
-    const data = new Uint8Array(node.frequencyBinCount);
+    const data = getFrequencyDataBuffer(node);
     node.getByteFrequencyData(data);
+    updateSpeechStats(node, speechStats.current, getTimeDomainDataBuffer(node));
 
     const callback = onWaveformSampleRef.current;
     if (callback) {
@@ -281,8 +321,27 @@ export function useRecorder(options: UseRecorderOptions = {}) {
       void audioContext.current?.close();
     }
     audioContext.current = null;
+    speechStats.current = createEmptySpeechStats();
+    frequencyData.current = null;
+    timeDomainData.current = null;
 
     onWaveformResetRef.current?.();
+  }
+
+  function getFrequencyDataBuffer(node: AnalyserNode): Uint8Array<ArrayBuffer> {
+    if (!frequencyData.current || frequencyData.current.length !== node.frequencyBinCount) {
+      frequencyData.current = new Uint8Array(node.frequencyBinCount);
+    }
+
+    return frequencyData.current;
+  }
+
+  function getTimeDomainDataBuffer(node: AnalyserNode): Uint8Array<ArrayBuffer> {
+    if (!timeDomainData.current || timeDomainData.current.length !== node.fftSize) {
+      timeDomainData.current = new Uint8Array(node.fftSize);
+    }
+
+    return timeDomainData.current;
   }
 
   function selectAudioInput(deviceId: string) {
@@ -343,6 +402,13 @@ export function useRecorder(options: UseRecorderOptions = {}) {
 }
 
 const CLEANUP_TIER_DEFAULT_VERSION = "3";
+const MIN_TRANSCRIPTION_DURATION_MS = 650;
+const ELAPSED_TIMER_INTERVAL_MS = 1000;
+const MEDIA_RECORDER_TIMESLICE_MS = 1000;
+const MIN_VOICED_MS = 240;
+const VOICE_RMS_THRESHOLD = 0.018;
+const VOICE_PEAK_THRESHOLD = 0.08;
+const MAX_SPEECH_SAMPLE_GAP_MS = 100;
 
 function readCleanupTier(): CleanupTier {
   if (localStorage.getItem("laryn.cleanupTierDefaultVersion") !== CLEANUP_TIER_DEFAULT_VERSION) {
@@ -390,6 +456,59 @@ function createAudioMonitorGraph(context: AudioContext, stream: MediaStream): Au
   analyserNode.fftSize = 128;
   source.connect(analyserNode);
   return { source, analyser: analyserNode };
+}
+
+function createEmptySpeechStats(): RecordingSpeechStats {
+  return {
+    lastSampleAt: 0,
+    sampleCount: 0,
+    totalMs: 0,
+    voicedMs: 0,
+    rmsTotal: 0,
+    peak: 0
+  };
+}
+
+function updateSpeechStats(node: AnalyserNode, stats: RecordingSpeechStats, data: Uint8Array<ArrayBuffer>): void {
+  node.getByteTimeDomainData(data);
+
+  let sumSquares = 0;
+  let peak = 0;
+  for (const value of data) {
+    const centered = (value - 128) / 128;
+    const magnitude = Math.abs(centered);
+    sumSquares += centered * centered;
+    if (magnitude > peak) {
+      peak = magnitude;
+    }
+  }
+
+  const rms = Math.sqrt(sumSquares / data.length);
+  const now = performance.now();
+  const deltaMs =
+    stats.lastSampleAt > 0
+      ? Math.min(MAX_SPEECH_SAMPLE_GAP_MS, Math.max(0, now - stats.lastSampleAt))
+      : 0;
+
+  stats.lastSampleAt = now;
+  stats.sampleCount += 1;
+  stats.totalMs += deltaMs;
+  stats.rmsTotal += rms;
+  stats.peak = Math.max(stats.peak, peak);
+  if (rms >= VOICE_RMS_THRESHOLD || peak >= VOICE_PEAK_THRESHOLD) {
+    stats.voicedMs += deltaMs;
+  }
+}
+
+function hasMeaningfulSpeech(stats: RecordingSpeechStats, durationMs: number): boolean {
+  if (durationMs < MIN_TRANSCRIPTION_DURATION_MS) {
+    return false;
+  }
+
+  const averageRms = stats.sampleCount > 0 ? stats.rmsTotal / stats.sampleCount : 0;
+  const voicedEnough = stats.voicedMs >= MIN_VOICED_MS;
+  const clearPeak = stats.peak >= VOICE_PEAK_THRESHOLD * 1.6 && stats.voicedMs >= MIN_VOICED_MS * 0.5;
+  return voicedEnough || clearPeak || (durationMs >= 1800 && averageRms >= VOICE_RMS_THRESHOLD * 0.75 && stats.peak >= VOICE_PEAK_THRESHOLD);
 }
 
 function createMediaRecorder(stream: MediaStream): MediaRecorder {

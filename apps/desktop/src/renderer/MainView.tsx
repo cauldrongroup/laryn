@@ -32,6 +32,8 @@ import {
 import type { FlowState } from "./useRecorder";
 
 const BAR_COUNT = 28;
+const WAVEFORM_BAR_INDICES = Array.from({ length: BAR_COUNT }, (_, index) => index);
+const SKELETON_ROW_INDICES = [0, 1, 2];
 const logoMarkUrl = "./logo-mark.svg";
 
 type RouteId = "dictate" | "history";
@@ -198,6 +200,7 @@ export default function MainView() {
           onRefreshInputs={() => void requestMicrophoneAndRefresh()}
           onCheckWorker={() => void window.laryn.checkWorker().then(setStatus)}
           onCheckUpdates={() => void window.laryn.checkForUpdates().then(setStatus)}
+          onInstallUpdate={() => void window.laryn.installUpdate().then(setStatus)}
           onSetHotkey={async (nextHotkey) => {
             setHotkeyError("");
             try {
@@ -437,7 +440,7 @@ function FlowPanel({
         ) : (
           <>
             <div className={`wave wave-${flowState} h-12 flex-1`} aria-hidden="true">
-              {Array.from({ length: BAR_COUNT }, (_, index) => (
+              {WAVEFORM_BAR_INDICES.map((index) => (
                 <span
                   key={index}
                   ref={(node) => {
@@ -828,7 +831,7 @@ function HistoryNoMatches({
 function HistorySkeleton() {
   return (
     <div className="grid gap-2">
-      {Array.from({ length: 3 }, (_, index) => (
+      {SKELETON_ROW_INDICES.map((index) => (
         <div key={index} className="panel-soft grid gap-2 p-4">
           <div className="h-3 w-32 animate-pulse rounded-full bg-white/5" />
           <div className="h-3 w-full animate-pulse rounded-full bg-white/5" />
@@ -858,6 +861,7 @@ function SettingsDrawer({
   onRefreshInputs,
   onCheckWorker,
   onCheckUpdates,
+  onInstallUpdate,
   onSetHotkey,
   onStartLogin,
   onLogout
@@ -880,6 +884,7 @@ function SettingsDrawer({
   onRefreshInputs: () => void;
   onCheckWorker: () => void;
   onCheckUpdates: () => void;
+  onInstallUpdate: () => void;
   onSetHotkey: (hotkey: string) => Promise<void>;
   onStartLogin: () => Promise<void>;
   onLogout: () => Promise<void>;
@@ -955,6 +960,7 @@ function SettingsDrawer({
           hotkey={hotkey}
           onCheckWorker={onCheckWorker}
           onCheckUpdates={onCheckUpdates}
+          onInstallUpdate={onInstallUpdate}
         />
       </aside>
     </div>
@@ -1288,15 +1294,19 @@ function SectionDictionary({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const editingEntry = dictionary.find((entry) => entry.id === editingId) || null;
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredEntries = normalizedQuery
-    ? dictionary.filter((entry) =>
-        [entry.phrase, entry.replacement ?? "", entry.kind].some((value) =>
-          value.toLocaleLowerCase().includes(normalizedQuery)
-        )
+  const editingEntry = useMemo(
+    () => dictionary.find((entry) => entry.id === editingId) || null,
+    [dictionary, editingId]
+  );
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase();
+    if (!normalizedQuery) return dictionary;
+    return dictionary.filter((entry) =>
+      [entry.phrase, entry.replacement ?? "", entry.kind].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedQuery)
       )
-    : dictionary;
+    );
+  }, [dictionary, query]);
 
   useEffect(() => {
     if (!editingEntry) return;
@@ -1533,14 +1543,27 @@ function SectionWorker({
   status,
   hotkey,
   onCheckWorker,
-  onCheckUpdates
+  onCheckUpdates,
+  onInstallUpdate
 }: {
   status: DesktopStatus;
   hotkey: string;
   onCheckWorker: () => void;
   onCheckUpdates: () => void;
+  onInstallUpdate: () => void;
 }) {
-  const updateBusy = status.updateStatus === "checking" || status.updateStatus === "downloading";
+  const updateReady = status.updateStatus === "ready";
+  const updateBusy = status.updateStatus === "checking" || status.updateStatus === "downloading" || status.updateStatus === "restarting";
+  const updateButtonLabel =
+    status.updateStatus === "downloading"
+      ? "Downloading"
+      : status.updateStatus === "restarting"
+        ? "Restarting"
+        : updateReady
+          ? "Install update"
+          : status.updateStatus === "checking"
+            ? "Checking"
+            : "Check updates";
 
   return (
     <section className="grid gap-3">
@@ -1577,10 +1600,10 @@ function SectionWorker({
           className="btn btn-secondary w-full"
           type="button"
           disabled={updateBusy}
-          onClick={onCheckUpdates}
+          onClick={updateReady ? onInstallUpdate : onCheckUpdates}
         >
           <RefreshCw size={14} />
-          {updateBusy ? "Checking" : "Check updates"}
+          {updateButtonLabel}
         </button>
       </div>
     </section>

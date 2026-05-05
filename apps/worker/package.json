@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "predeploy": "pnpm --filter @laryn/dashboard build",
     "deploy": "wrangler deploy",
+    "preversions:upload": "pnpm --filter @laryn/dashboard build",
     "versions:upload": "wrangler versions upload",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -21,6 +23,7 @@
     "hono": "^4.12.15"
   },
   "devDependencies": {
+    "@laryn/dashboard": "workspace:*",
     "@cloudflare/workers-types": "^4.20260425.1",
     "drizzle-kit": "^0.31.10",
     "vitest": "^4.1.5",

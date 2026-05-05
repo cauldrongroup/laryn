@@ -14,10 +14,12 @@ import { checkout, polar, portal, usage, webhooks } from "@polar-sh/better-auth"
 import { betterAuth } from "better-auth";
 import { cors } from "hono/cors";
 import { Hono } from "hono";
+import { DASHBOARD_ASSET_VERSION, DASHBOARD_CLIENT_CSS, DASHBOARD_CLIENT_JS } from "./dashboard-assets";
 
 export interface Env {
   AI: Ai;
   DB: D1Database;
+  EXECUTION_CTX?: ExecutionContext;
   AI_GATEWAY_ID: string;
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
@@ -42,8 +44,15 @@ export interface Env {
   POLAR_WEBHOOK_SECRET?: string;
   PUBLIC_APP_URL?: string;
   LARYN_INCLUDED_CREDIT_UNITS?: string;
+  LARYN_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER?: string;
+  LARYN_MONTHLY_USAGE_CAP_UNITS?: string;
   LARYN_POLAR_UNIT_MICRO_USD?: string;
+  LARYN_RATE_LIMIT_MAX_REQUESTS?: string;
+  LARYN_RATE_LIMIT_WINDOW_SECONDS?: string;
   LARYN_UPDATE_BASE_URL?: string;
+  LARYN_GROQ_MIN_BILLABLE_AUDIO_MS?: string;
+  LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE?: string;
+  LARYN_VERBOSE_LOGS?: string;
   LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE?: string;
   TRANSCRIPTION_PROVIDER?: string;
   TRANSCRIPTION_LANGUAGE?: string;
@@ -64,6 +73,14 @@ type CleanupResult = {
   costMicroUsd?: number;
 };
 
+type UsagePreflightResult =
+  | { ok: true }
+  | {
+      ok: false;
+      status: 402 | 429;
+      error: TranscriptionError;
+    };
+
 type NormalizedDictionaryEntry = {
   kind: "vocabulary" | "replacement";
   phrase: string;
@@ -75,7 +92,7 @@ type NormalizedDictionaryPayload = {
   warning?: string;
 };
 
-type TranscriptionProvider = "workers-ai" | "groq";
+export type TranscriptionProvider = "workers-ai" | "groq";
 
 type AuthSession = {
   user: {
@@ -111,7 +128,12 @@ const DEFAULT_POLAR_USAGE_EVENT_NAME = "laryn-usage";
 const DEFAULT_INCLUDED_CREDIT_UNITS = 3_000_000;
 const DEFAULT_POLAR_UNIT_MICRO_USD = 1;
 const DEFAULT_WHISPER_MICRO_USD_PER_AUDIO_MINUTE = 510;
-const DEFAULT_CLOUDFLARE_ACCOUNT_ID = "6d6529fc50727497faffecc2e510e191";
+const DEFAULT_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE = 667;
+const DEFAULT_GROQ_MIN_BILLABLE_AUDIO_MS = 10_000;
+const DEFAULT_RATE_LIMIT_WINDOW_SECONDS = 60;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 12;
+const DEFAULT_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER = 1;
+const IN_FLIGHT_ATTEMPT_STALE_SECONDS = 300;
 const DEFAULT_AI_GATEWAY_ID = "default";
 const DEFAULT_TRANSCRIPTION_LANGUAGE = "en";
 const DEFAULT_TRANSCRIPTION_CONTEXT =
@@ -227,6 +249,16 @@ app.get("/downloads/laryn-windows-latest.exe", async (c) => {
 
   return c.redirect(installerUrl, 302);
 });
+app.get("/app/assets/dashboard.css", (c) => {
+  c.header("cache-control", "public, max-age=31536000, immutable");
+  c.header("content-type", "text/css; charset=utf-8");
+  return c.body(DASHBOARD_CLIENT_CSS);
+});
+app.get("/app/assets/dashboard.js", (c) => {
+  c.header("cache-control", "public, max-age=31536000, immutable");
+  c.header("content-type", "text/javascript; charset=utf-8");
+  return c.body(DASHBOARD_CLIENT_JS);
+});
 app.get("/app", (c) => c.html(renderDashboardPage()));
 app.get("/app/*", (c) => c.html(renderDashboardPage()));
 
@@ -248,8 +280,8 @@ app.get("/health", (c) =>
     cleanupTimeoutMs: cleanupTimeoutMs(c.env),
     aiGatewayId: aiGatewayId(c.env),
     cleanupTier: normalizeCleanupTier(c.env.CLEANUP_TIER),
-    authConfigured: Boolean(c.env.BETTER_AUTH_SECRET && c.env.GOOGLE_CLIENT_ID && c.env.GOOGLE_CLIENT_SECRET),
-    polarConfigured: Boolean(c.env.POLAR_ACCESS_TOKEN && c.env.POLAR_PRO_PRODUCT_ID)
+    authConfigured: hasConfig(c.env.BETTER_AUTH_SECRET) && hasConfig(c.env.GOOGLE_CLIENT_ID) && hasConfig(c.env.GOOGLE_CLIENT_SECRET),
+    polarConfigured: isPolarConfigured(c.env)
   })
 );
 
@@ -578,32 +610,56 @@ app.post("/v1/transcriptions", async (c) => {
   const cleanupTier = normalizeCleanupTier(String(form.get("cleanupTier") ?? c.env.CLEANUP_TIER ?? DEFAULT_CLEANUP_TIER));
   const dictionary = cleanupTier === "off" ? { entries: [] } : normalizeDictionaryPayload(form.get("dictionary"));
   const durationMs = Number.parseInt(String(form.get("durationMs") ?? "0"), 10);
+  const normalizedDurationMs = normalizeAudioDurationMs(durationMs);
   const provider = transcriptionProvider(c.env);
   const transcriptionModel = transcriptionModelForProvider(provider, c.env);
-  console.log(
-    JSON.stringify({
-      level: "info",
-      event: "transcription:start",
-      requestId,
-      userId: authorized.userId,
-      deviceId: authorized.deviceId,
-      audioBytes: audio.size,
-      audioType: audio.type || "audio/webm",
-      cleanupTier,
-      transcriptionProvider: provider,
-      transcriptionModel,
-      transcriptionLanguage: transcriptionLanguage(c.env),
-      transcriptionHintsConfigured: Boolean(transcriptionPrompt(c.env)),
-      dictionaryConfigured: dictionary.entries.length > 0,
-      dictionaryEntryCount: dictionary.entries.length
-    })
-  );
+  const preflight = await checkUsagePreflight(c.env, authorized.userId, provider, normalizedDurationMs);
+  if (!preflight.ok) {
+    return c.json<TranscriptionError>(preflight.error, preflight.status);
+  }
+
+  const usageEventId = crypto.randomUUID();
+  const anticipatedTranscriptionCostMicroUsd = calculateTranscriptionUsageCost(normalizedDurationMs, c.env, provider);
+  await createUsageAttempt(c.env, {
+    usageEventId,
+    userId: authorized.userId,
+    deviceId: authorized.deviceId,
+    audioBytes: audio.size,
+    durationMs: normalizedDurationMs,
+    cleanupTier,
+    transcriptionProvider: provider,
+    transcriptionModel,
+    anticipatedTranscriptionCostMicroUsd,
+    polarEventName: polarUsageEventName(c.env)
+  });
+
+  if (verboseLogsEnabled(c.env)) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "transcription:start",
+        requestId,
+        userId: authorized.userId,
+        deviceId: authorized.deviceId,
+        audioBytes: audio.size,
+        audioType: audio.type || "audio/webm",
+        cleanupTier,
+        transcriptionProvider: provider,
+        transcriptionModel,
+        transcriptionLanguage: transcriptionLanguage(c.env),
+        transcriptionHintsConfigured: Boolean(transcriptionPrompt(c.env)),
+        dictionaryConfigured: dictionary.entries.length > 0,
+        dictionaryEntryCount: dictionary.entries.length
+      })
+    );
+  }
 
   let transcriptionPayload: unknown;
   try {
     transcriptionPayload = await runTranscription(audio, c.env, provider, transcriptionModel);
   } catch (error) {
     console.error(JSON.stringify({ level: "error", event: "transcription:failed", requestId, elapsedMs: Date.now() - started, error: formatError(error) }));
+    await markUsageAttemptFailed(c.env, usageEventId, error);
     return c.json<TranscriptionError>(
       {
         error: "Transcription failed",
@@ -613,10 +669,51 @@ app.post("/v1/transcriptions", async (c) => {
     );
   }
 
+  const actualProvider = transcriptionProviderFromPayload(transcriptionPayload, provider);
+  const actualTranscriptionModel = transcriptionModelFromPayload(transcriptionPayload, transcriptionModel);
+  const transcriptionCostMicroUsd = calculateTranscriptionUsageCost(normalizedDurationMs, c.env, actualProvider);
+  const billableAudioDurationMs = calculateBillableAudioDurationMs(normalizedDurationMs, actualProvider, c.env);
+  const audioMinutes = normalizedDurationMs / 60_000;
+  const billableAudioMinutes = billableAudioDurationMs / 60_000;
   const rawText = extractTranscriptText(transcriptionPayload);
   if (!rawText) {
+    const totalCostMicroUsd = calculateTotalBillableUnits(transcriptionCostMicroUsd);
+    await finalizeUsageEvent(c.env, {
+      usageEventId,
+      deviceId: authorized.deviceId,
+      eventType: "transcription",
+      durationMs: normalizedDurationMs,
+      cleanupTier,
+      transcriptionProvider: actualProvider,
+      transcriptionModel: actualTranscriptionModel,
+      billableUnits: totalCostMicroUsd,
+      transcriptionCostMicroUsd,
+      cleanupCostMicroUsd: 0,
+      cleanupInputTokens: null,
+      cleanupOutputTokens: null,
+      cleanupTokensEstimated: true
+    });
+    runInBackground(
+      c.env,
+      ingestPolarUsage(c.env, {
+        userId: authorized.userId,
+        usageEventId,
+        polarEventName: polarUsageEventName(c.env),
+        totalCostMicroUsd,
+        transcriptionCostMicroUsd,
+        cleanupCostMicroUsd: 0,
+        audioDurationMs: normalizedDurationMs,
+        audioMinutes,
+        billableAudioDurationMs,
+        billableAudioMinutes,
+        cleanupTier,
+        cleanupModel: "none",
+        cleanupTokensEstimated: true
+      })
+    );
+
     const result: TranscriptionResponse = {
-      id: crypto.randomUUID(),
+      id: usageEventId,
       text: "",
       rawText: "",
       cleanedText: "",
@@ -629,8 +726,9 @@ app.post("/v1/transcriptions", async (c) => {
       dictionaryWarning: dictionary.warning,
       wordCount: 0,
       durationMs: Date.now() - started,
-      transcriptionProvider: provider,
-      transcriptionModel,
+      transcriptionProvider: actualProvider,
+      transcriptionModel: actualTranscriptionModel,
+      usageEventId,
       accountId: authorized.userId,
       deviceId: authorized.deviceId
     };
@@ -639,64 +737,48 @@ app.post("/v1/transcriptions", async (c) => {
 
   const cleanup = await cleanupTranscript(rawText, cleanupTier, c.env, dictionary.entries, dictionary.warning);
   const text = cleanup.applied ? cleanup.text : rawText;
-  const usageEventId = crypto.randomUUID();
-  const normalizedDurationMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
-  const audioMinutes = normalizedDurationMs / 60_000;
-  const transcriptionCostMicroUsd = calculateTranscriptionUsageCost(normalizedDurationMs, c.env);
   const cleanupCostMicroUsd = cleanup.costMicroUsd ?? 0;
   const totalCostMicroUsd = calculateTotalBillableUnits(transcriptionCostMicroUsd, cleanupCostMicroUsd);
   const polarEventName = polarUsageEventName(c.env);
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO usage_events (
-         id, user_id, device_id, event_type, audio_bytes, duration_ms, cleanup_tier, transcription_provider, transcription_model,
-         billable_units, transcription_cost_micro_usd, cleanup_cost_micro_usd, cleanup_input_tokens, cleanup_output_tokens,
-         cleanup_tokens_estimated, polar_event_name, polar_external_id
-       )
-       VALUES (?, ?, ?, 'transcription', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(
-      usageEventId,
-      authorized.userId,
-      authorized.deviceId,
-      audio.size,
-      normalizedDurationMs,
-      cleanupTier,
-      provider,
-      transcriptionModel,
-      totalCostMicroUsd,
-      transcriptionCostMicroUsd,
-      cleanupCostMicroUsd,
-      cleanup.inputTokens ?? null,
-      cleanup.outputTokens ?? null,
-      cleanup.estimatedTokens === false ? 0 : 1,
-      polarEventName,
-      usageEventId
-    ),
-    c.env.DB.prepare(
-      `UPDATE desktop_devices
-       SET last_seen_at = CURRENT_TIMESTAMP
-       WHERE id = ?`
-    ).bind(authorized.deviceId)
-  ]);
-
-  await ingestPolarUsage(c.env, {
-    userId: authorized.userId,
+  await finalizeUsageEvent(c.env, {
     usageEventId,
-    polarEventName,
-    totalCostMicroUsd,
+    deviceId: authorized.deviceId,
+    eventType: "transcription",
+    durationMs: normalizedDurationMs,
+    cleanupTier,
+    transcriptionProvider: actualProvider,
+    transcriptionModel: actualTranscriptionModel,
+    billableUnits: totalCostMicroUsd,
     transcriptionCostMicroUsd,
     cleanupCostMicroUsd,
-    audioDurationMs: normalizedDurationMs,
-    audioMinutes,
-    cleanupTier,
-    cleanupModel: cleanup.model || "none",
-    cleanupInputTokens: cleanup.inputTokens,
-    cleanupOutputTokens: cleanup.outputTokens,
+    cleanupInputTokens: cleanup.inputTokens ?? null,
+    cleanupOutputTokens: cleanup.outputTokens ?? null,
     cleanupTokensEstimated: cleanup.estimatedTokens !== false
   });
 
+  runInBackground(
+    c.env,
+    ingestPolarUsage(c.env, {
+      userId: authorized.userId,
+      usageEventId,
+      polarEventName,
+      totalCostMicroUsd,
+      transcriptionCostMicroUsd,
+      cleanupCostMicroUsd,
+      audioDurationMs: normalizedDurationMs,
+      audioMinutes,
+      billableAudioDurationMs,
+      billableAudioMinutes,
+      cleanupTier,
+      cleanupModel: cleanup.model || "none",
+      cleanupInputTokens: cleanup.inputTokens,
+      cleanupOutputTokens: cleanup.outputTokens,
+      cleanupTokensEstimated: cleanup.estimatedTokens !== false
+    })
+  );
+
   return c.json<TranscriptionResponse>({
-    id: crypto.randomUUID(),
+    id: usageEventId,
     text,
     rawText,
     cleanedText: cleanup.applied ? cleanup.text : rawText,
@@ -710,8 +792,8 @@ app.post("/v1/transcriptions", async (c) => {
     dictionaryWarning: cleanup.dictionaryWarning,
     wordCount: countWords(text),
     durationMs: Date.now() - started,
-    transcriptionProvider: provider,
-    transcriptionModel,
+    transcriptionProvider: actualProvider,
+    transcriptionModel: actualTranscriptionModel,
     cleanupModel: cleanup.model,
     usageEventId,
     accountId: authorized.userId,
@@ -721,7 +803,7 @@ app.post("/v1/transcriptions", async (c) => {
 
 export default {
   async fetch(request: Request, env: Env, executionCtx: ExecutionContext): Promise<Response> {
-    return app.fetch(request, env, executionCtx);
+    return app.fetch(request, { ...env, EXECUTION_CTX: executionCtx }, executionCtx);
   }
 };
 
@@ -731,12 +813,12 @@ function createAuth(env: Env) {
   return betterAuth({
     appName: "Laryn",
     baseURL: betterAuthUrl(env),
-    secret: env.BETTER_AUTH_SECRET || "replace-with-BETTER_AUTH_SECRET-before-production",
+    secret: requiredConfig(env.BETTER_AUTH_SECRET, "BETTER_AUTH_SECRET"),
     database: env.DB as unknown as Parameters<typeof betterAuth>[0]["database"],
     socialProviders: {
       google: {
-        clientId: env.GOOGLE_CLIENT_ID || "missing-google-client-id",
-        clientSecret: env.GOOGLE_CLIENT_SECRET || "missing-google-client-secret",
+        clientId: requiredConfig(env.GOOGLE_CLIENT_ID, "GOOGLE_CLIENT_ID"),
+        clientSecret: requiredConfig(env.GOOGLE_CLIENT_SECRET, "GOOGLE_CLIENT_SECRET"),
         prompt: "select_account"
       }
     },
@@ -746,7 +828,7 @@ function createAuth(env: Env) {
         createCustomerOnSignUp: true,
         use: [
           checkout({
-            products: [{ productId: env.POLAR_PRO_PRODUCT_ID || "missing-polar-pro-product-id", slug: "pro" }],
+            products: [{ productId: requiredConfig(env.POLAR_PRO_PRODUCT_ID, "POLAR_PRO_PRODUCT_ID"), slug: "pro" }],
             successUrl: "/app/billing/success?checkout_id={CHECKOUT_ID}",
             returnUrl: "/app",
             authenticatedUsersOnly: true
@@ -754,7 +836,7 @@ function createAuth(env: Env) {
           portal({ returnUrl: `${publicAppUrl(env)}/app` }),
           usage(),
           webhooks({
-            secret: env.POLAR_WEBHOOK_SECRET || "missing-polar-webhook-secret",
+            secret: requiredConfig(env.POLAR_WEBHOOK_SECRET, "POLAR_WEBHOOK_SECRET"),
             onPayload: (payload) => syncPolarPayload(env, payload),
             onCustomerStateChanged: (payload) => syncPolarPayload(env, payload),
             onSubscriptionActive: (payload) => syncPolarPayload(env, payload),
@@ -771,13 +853,13 @@ function createAuth(env: Env) {
 
 function createPolarClient(env: Env): Polar {
   return new Polar({
-    accessToken: env.POLAR_ACCESS_TOKEN || "missing-polar-access-token",
+    accessToken: requiredConfig(env.POLAR_ACCESS_TOKEN, "POLAR_ACCESS_TOKEN"),
     server: env.POLAR_SERVER === "production" ? "production" : "sandbox"
   });
 }
 
 function isPolarConfigured(env: Env): boolean {
-  return Boolean(env.POLAR_ACCESS_TOKEN && env.POLAR_PRO_PRODUCT_ID);
+  return hasConfig(env.POLAR_ACCESS_TOKEN) && hasConfig(env.POLAR_PRO_PRODUCT_ID) && hasConfig(env.POLAR_WEBHOOK_SECRET);
 }
 
 async function ensurePolarCustomer(env: Env, user: AuthSession["user"]): Promise<void> {
@@ -885,14 +967,7 @@ async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuth
     return null;
   }
 
-  const billing = await getBilling(env, device.user_id);
-  await env.DB.prepare(
-    `UPDATE desktop_devices
-     SET last_seen_at = CURRENT_TIMESTAMP
-     WHERE id = ?`
-  )
-    .bind(device.id)
-    .run();
+  const billing = await getCachedBilling(env, device.user_id);
 
   return {
     deviceId: device.id,
@@ -924,6 +999,27 @@ async function getBilling(env: Env, userId: string): Promise<AccountBillingStatu
     console.warn(JSON.stringify({ level: "warn", event: "polar:billing-reconcile-failed", userId, error: formatError(error) }));
     return withDefaultUsageCredits(env, billing);
   }
+}
+
+async function getCachedBilling(env: Env, userId: string): Promise<AccountBillingStatus> {
+  const row = await env.DB.prepare(
+    `SELECT polar_customer_id, subscription_status, current_period_end, pro_active
+     FROM billing_profiles
+     WHERE user_id = ?`
+  )
+    .bind(userId)
+    .first<{ polar_customer_id?: string | null; subscription_status: string; current_period_end?: string | null; pro_active: number }>();
+
+  if (!row) {
+    return withDefaultUsageCredits(env, await ensureBillingProfile(env, userId));
+  }
+
+  return withDefaultUsageCredits(env, {
+    proActive: Boolean(row.pro_active),
+    subscriptionStatus: normalizeSubscriptionStatus(row.subscription_status),
+    currentPeriodEnd: row.current_period_end || undefined,
+    polarCustomerId: row.polar_customer_id || undefined
+  });
 }
 
 async function ensureBillingProfile(env: Env, userId: string): Promise<AccountBillingStatus> {
@@ -982,6 +1078,189 @@ async function getUsageSummary(env: Env, userId: string): Promise<{ transcriptio
     transcriptionCount: Number(row?.transcription_count ?? 0),
     audioDurationMs: Number(row?.audio_duration_ms ?? 0)
   };
+}
+
+async function checkUsagePreflight(env: Env, userId: string, provider: TranscriptionProvider, durationMs: number): Promise<UsagePreflightResult> {
+  const anticipatedUnits = calculateTranscriptionUsageCost(durationMs, env, provider);
+  const windowSeconds = rateLimitWindowSeconds(env);
+  const [inFlightRow, recentRow, monthRow] = await Promise.all([
+    env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM usage_events
+       WHERE user_id = ?
+         AND event_type = 'transcription_attempt'
+         AND created_at >= datetime('now', ?)`
+    )
+      .bind(userId, `-${IN_FLIGHT_ATTEMPT_STALE_SECONDS} seconds`)
+      .first<{ count: number }>(),
+    env.DB.prepare(
+      `SELECT COUNT(*) AS count
+       FROM usage_events
+       WHERE user_id = ?
+         AND event_type IN ('transcription_attempt', 'transcription')
+         AND created_at >= datetime('now', ?)`
+    )
+      .bind(userId, `-${windowSeconds} seconds`)
+      .first<{ count: number }>(),
+    env.DB.prepare(
+      `SELECT COALESCE(SUM(billable_units), 0) AS units
+       FROM usage_events
+       WHERE user_id = ?
+         AND event_type IN ('transcription_attempt', 'transcription')
+         AND created_at >= datetime('now', 'start of month')`
+    )
+      .bind(userId)
+      .first<{ units: number }>()
+  ]);
+
+  const inFlightCount = Number(inFlightRow?.count ?? 0);
+  const maxConcurrent = maxConcurrentTranscriptionsPerUser(env);
+  if (inFlightCount >= maxConcurrent) {
+    return {
+      ok: false,
+      status: 429,
+      error: {
+        error: "Too many transcription requests",
+        detail: "A transcription is already in progress for this account. Try again after it finishes."
+      }
+    };
+  }
+
+  const recentCount = Number(recentRow?.count ?? 0);
+  const maxRecent = rateLimitMaxRequests(env);
+  if (recentCount >= maxRecent) {
+    return {
+      ok: false,
+      status: 429,
+      error: {
+        error: "Too many transcription requests",
+        detail: `Rate limit reached. Try again in about ${windowSeconds} seconds.`
+      }
+    };
+  }
+
+  const monthlyUnits = Number(monthRow?.units ?? 0);
+  const monthlyCap = monthlyUsageCapUnits(env);
+  if (monthlyUnits + anticipatedUnits > monthlyCap) {
+    return {
+      ok: false,
+      status: 402,
+      error: {
+        error: "Usage limit reached",
+        detail: "This account has reached the monthly dictation usage cap. Raise LARYN_MONTHLY_USAGE_CAP_UNITS to allow overage."
+      }
+    };
+  }
+
+  return { ok: true };
+}
+
+async function createUsageAttempt(
+  env: Env,
+  attempt: {
+    usageEventId: string;
+    userId: string;
+    deviceId: string;
+    audioBytes: number;
+    durationMs: number;
+    cleanupTier: CleanupTier;
+    transcriptionProvider: TranscriptionProvider;
+    transcriptionModel: string;
+    anticipatedTranscriptionCostMicroUsd: number;
+    polarEventName: string;
+  }
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO usage_events (
+       id, user_id, device_id, event_type, audio_bytes, duration_ms, cleanup_tier, transcription_provider, transcription_model,
+       billable_units, transcription_cost_micro_usd, cleanup_cost_micro_usd, cleanup_tokens_estimated, polar_event_name, polar_external_id
+     )
+     VALUES (?, ?, ?, 'transcription_attempt', ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?)`
+  )
+    .bind(
+      attempt.usageEventId,
+      attempt.userId,
+      attempt.deviceId,
+      attempt.audioBytes,
+      attempt.durationMs,
+      attempt.cleanupTier,
+      attempt.transcriptionProvider,
+      attempt.transcriptionModel,
+      attempt.anticipatedTranscriptionCostMicroUsd,
+      attempt.anticipatedTranscriptionCostMicroUsd,
+      attempt.polarEventName,
+      attempt.usageEventId
+    )
+    .run();
+}
+
+async function finalizeUsageEvent(
+  env: Env,
+  event: {
+    usageEventId: string;
+    deviceId: string;
+    eventType: "transcription";
+    durationMs: number;
+    cleanupTier: CleanupTier;
+    transcriptionProvider: TranscriptionProvider;
+    transcriptionModel: string;
+    billableUnits: number;
+    transcriptionCostMicroUsd: number;
+    cleanupCostMicroUsd: number;
+    cleanupInputTokens: number | null;
+    cleanupOutputTokens: number | null;
+    cleanupTokensEstimated: boolean;
+  }
+): Promise<void> {
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE usage_events
+       SET event_type = ?,
+           duration_ms = ?,
+           cleanup_tier = ?,
+           transcription_provider = ?,
+           transcription_model = ?,
+           billable_units = ?,
+           transcription_cost_micro_usd = ?,
+           cleanup_cost_micro_usd = ?,
+           cleanup_input_tokens = ?,
+           cleanup_output_tokens = ?,
+           cleanup_tokens_estimated = ?,
+           polar_ingestion_error = NULL
+       WHERE id = ?`
+    ).bind(
+      event.eventType,
+      event.durationMs,
+      event.cleanupTier,
+      event.transcriptionProvider,
+      event.transcriptionModel,
+      event.billableUnits,
+      event.transcriptionCostMicroUsd,
+      event.cleanupCostMicroUsd,
+      event.cleanupInputTokens,
+      event.cleanupOutputTokens,
+      event.cleanupTokensEstimated ? 1 : 0,
+      event.usageEventId
+    ),
+    env.DB.prepare(
+      `UPDATE desktop_devices
+       SET last_seen_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).bind(event.deviceId)
+  ]);
+}
+
+async function markUsageAttemptFailed(env: Env, usageEventId: string, error: unknown): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE usage_events
+     SET event_type = 'transcription_failed',
+         billable_units = 0,
+         transcription_cost_micro_usd = 0,
+         polar_ingestion_error = ?
+     WHERE id = ?`
+  )
+    .bind(JSON.stringify(formatError(error)), usageEventId)
+    .run();
 }
 
 async function getUser(env: Env, userId: string): Promise<AuthSession["user"] | null> {
@@ -1078,10 +1357,14 @@ async function runTranscription(audio: File, env: Env, provider: TranscriptionPr
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const started = Date.now();
     try {
-      console.log(JSON.stringify({ level: "info", event: "ai:transcription:start", provider, model, audioBytes: audio.size, attempt }));
+      if (verboseLogsEnabled(env)) {
+        console.log(JSON.stringify({ level: "info", event: "ai:transcription:start", provider, model, audioBytes: audio.size, attempt }));
+      }
       const result =
         provider === "groq" ? await runGroqTranscriptionWithFallback(audio, env, model) : await env.AI.run(model, await transcriptionPayloadForModel(audio, model, env));
-      console.log(JSON.stringify({ level: "info", event: "ai:transcription:ok", provider, model, elapsedMs: Date.now() - started, attempt }));
+      if (verboseLogsEnabled(env)) {
+        console.log(JSON.stringify({ level: "info", event: "ai:transcription:ok", provider, model, elapsedMs: Date.now() - started, attempt }));
+      }
       return result;
     } catch (error) {
       lastError = error;
@@ -1147,6 +1430,7 @@ async function runGroqTranscriptionWithFallback(audio: File, env: Env, model: st
       return {
         ...fallbackResult,
         transcriptionProvider: "workers-ai",
+        transcriptionModel: fallbackModel,
         requestedProvider: "groq",
         providerFallbackUsed: true,
         providerFallbackReason: error instanceof Error ? error.message : String(error)
@@ -1229,6 +1513,10 @@ async function cleanupTranscript(
 
   const models = cleanupModelsForTier(tier, env);
   const failures: string[] = [];
+  let totalCostMicroUsd = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let tokensEstimated = false;
   const skipReason = cleanupSkipReason(rawText);
   if (skipReason) {
     return {
@@ -1244,29 +1532,49 @@ async function cleanupTranscript(
 
   for (let index = 0; index < models.length; index += 1) {
     const model = models[index];
+    const inputText = cleanupInputText(rawText, dictionary);
     try {
-      const inputText = cleanupInputText(rawText, dictionary);
       const payload = await withTimeout(runCleanupModel(rawText, env, model, dictionary), cleanupTimeoutMs(env), `cleanup timed out after ${cleanupTimeoutMs(env)}ms`);
       const cleanedText = extractGeneratedText(payload);
+      const cleanupUsage = calculateCleanupUsageCost(model, inputText, cleanedText, payload);
+      totalCostMicroUsd += cleanupUsage.costMicroUsd;
+      totalInputTokens += cleanupUsage.inputTokens;
+      totalOutputTokens += cleanupUsage.outputTokens;
+      tokensEstimated = tokensEstimated || cleanupUsage.estimatedTokens;
       const validationError = validateCleanup(rawText, cleanedText);
       if (validationError) {
         failures.push(`${model}: ${validationError}`);
-        continue;
+        return {
+          text: rawText,
+          model,
+          applied: false,
+          fallbackUsed: index > 0,
+          warning: `Cleanup rejected; pasted raw transcript. ${failures.join(" | ")}`,
+          dictionaryWarning,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          estimatedTokens: tokensEstimated,
+          costMicroUsd: totalCostMicroUsd
+        };
       }
-      const cleanupUsage = calculateCleanupUsageCost(model, inputText, cleanedText, payload);
 
       return {
         text: cleanedText,
         model,
         applied: true,
         fallbackUsed: index > 0,
-        inputTokens: cleanupUsage.inputTokens,
-        outputTokens: cleanupUsage.outputTokens,
-        estimatedTokens: cleanupUsage.estimatedTokens,
-        costMicroUsd: cleanupUsage.costMicroUsd,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        estimatedTokens: tokensEstimated,
+        costMicroUsd: totalCostMicroUsd,
         dictionaryWarning
       };
     } catch (error) {
+      const failedUsage = calculateCleanupUsageCost(model, inputText, "");
+      totalCostMicroUsd += failedUsage.costMicroUsd;
+      totalInputTokens += failedUsage.inputTokens;
+      totalOutputTokens += failedUsage.outputTokens;
+      tokensEstimated = true;
       failures.push(`${model}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -1277,7 +1585,11 @@ async function cleanupTranscript(
     applied: false,
     fallbackUsed: models.length > 1,
     warning: `Cleanup unavailable; pasted raw transcript. ${failures.join(" | ")}`,
-    dictionaryWarning
+    dictionaryWarning,
+    inputTokens: totalInputTokens,
+    outputTokens: totalOutputTokens,
+    estimatedTokens: tokensEstimated,
+    costMicroUsd: totalCostMicroUsd
   };
 }
 
@@ -1399,9 +1711,32 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-export function calculateTranscriptionUsageCost(durationMs: number, env?: Pick<Env, "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE">): number {
-  const audioMinutes = Math.max(Number.isFinite(durationMs) ? durationMs / 60_000 : 0, 0);
-  return Math.ceil(audioMinutes * whisperMicroUsdPerAudioMinute(env));
+export function calculateTranscriptionUsageCost(
+  durationMs: number,
+  env?: Pick<Env, "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE" | "LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE" | "LARYN_GROQ_MIN_BILLABLE_AUDIO_MS">,
+  provider: TranscriptionProvider = "workers-ai"
+): number {
+  const billableDurationMs = calculateBillableAudioDurationMs(durationMs, provider, env);
+  const audioMinutes = billableDurationMs / 60_000;
+  const microUsdPerMinute = provider === "groq" ? groqWhisperMicroUsdPerAudioMinute(env) : whisperMicroUsdPerAudioMinute(env);
+  return Math.ceil(audioMinutes * microUsdPerMinute);
+}
+
+function calculateBillableAudioDurationMs(
+  durationMs: number,
+  provider: TranscriptionProvider,
+  env?: Pick<Env, "LARYN_GROQ_MIN_BILLABLE_AUDIO_MS">
+): number {
+  const normalizedDurationMs = normalizeAudioDurationMs(durationMs);
+  if (provider === "groq" && normalizedDurationMs > 0) {
+    return Math.max(normalizedDurationMs, groqMinBillableAudioMs(env));
+  }
+
+  return normalizedDurationMs;
+}
+
+function normalizeAudioDurationMs(durationMs: number): number {
+  return Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs) : 0;
 }
 
 export function calculateCleanupUsageCost(
@@ -1549,6 +1884,8 @@ async function ingestPolarUsage(
     cleanupCostMicroUsd: number;
     audioDurationMs: number;
     audioMinutes: number;
+    billableAudioDurationMs: number;
+    billableAudioMinutes: number;
     cleanupTier: CleanupTier;
     cleanupModel: string;
     cleanupInputTokens?: number;
@@ -1573,6 +1910,8 @@ async function ingestPolarUsage(
             cleanupCostMicroUsd: usageEvent.cleanupCostMicroUsd,
             audioDurationMs: usageEvent.audioDurationMs,
             audioMinutes: usageEvent.audioMinutes,
+            billableAudioDurationMs: usageEvent.billableAudioDurationMs,
+            billableAudioMinutes: usageEvent.billableAudioMinutes,
             cleanupTier: usageEvent.cleanupTier,
             cleanupModel: usageEvent.cleanupModel,
             cleanupInputTokens: usageEvent.cleanupInputTokens ?? 0,
@@ -1766,6 +2105,17 @@ function marketingFooter(): string {
   </footer>`;
 }
 
+function renderMarketingWaveBars(count: number, seed = 0): string {
+  return Array.from({ length: count })
+    .map((_, index) => {
+      const wave = Math.sin((index + seed) / 1.45) * 0.5 + 0.5;
+      const accent = Math.sin((index + seed) / 3.4) * 0.5 + 0.5;
+      const height = Math.round(16 + (wave * 0.72 + accent * 0.28) * 72);
+      return `<span style="--h:${height}%;--d:${index * 52}ms"></span>`;
+    })
+    .join("");
+}
+
 function homeBody(appUrl: string): string {
   return `
     <section class="hero">
@@ -1785,38 +2135,82 @@ function homeBody(appUrl: string): string {
             <li><span class="hero-meta-dot dot-good"></span>Pastes into any app you have open</li>
           </ul>
         </div>
-        <aside class="hero-mock" aria-hidden="true">
-          <div class="mock-frame">
-            <div class="mock-bar">
-              <div class="mock-bar-dots"><span></span><span></span><span></span></div>
-              <small>laryn — overlay</small>
-              <span class="mock-bar-kbd">CTRL + WIN</span>
+        <aside class="hero-preview" role="img" aria-label="Preview of Laryn while dictating: the desktop app shows Listening, a live waveform, elapsed time, and the Ctrl plus Win hotkey.">
+          <div class="preview-window">
+            <div class="preview-titlebar">
+              <div class="preview-brand">
+                <span class="brand-mark"></span>
+                <strong>Laryn</strong>
+              </div>
+              <div class="preview-title-status"><span class="dot dot-good"></span>Dictating</div>
+              <div class="preview-window-controls" aria-hidden="true"><span></span><span></span><span></span></div>
             </div>
-            <div class="mock-overlay" data-state="recording">
-              <div class="mock-mic"></div>
-              <div class="mock-text">
-                <strong>Listening</strong>
-                <span>Release Ctrl + Win to transcribe</span>
+            <div class="preview-app">
+              <div class="preview-rail">
+                <span class="preview-nav-item active">Dictate</span>
+                <span class="preview-nav-item">History</span>
+                <span class="preview-nav-item">Settings</span>
               </div>
-              <div class="mock-wave">
-                ${Array.from({ length: 28 })
-                  .map(
-                    (_, i) =>
-                      `<span style="--h:${Math.round(18 + (Math.sin(i / 1.6) * 0.5 + 0.5) * 72)}%;--d:${i * 60}ms"></span>`
-                  )
-                  .join("")}
+              <div class="preview-main">
+                <div class="preview-head">
+                  <div>
+                    <small>Desktop dictation</small>
+                    <h3>Hold-to-talk mode</h3>
+                  </div>
+                  <div class="preview-hotkey">
+                    <kbd>Ctrl</kbd><span>+</span><kbd>Win</kbd>
+                  </div>
+                </div>
+                <section class="preview-flow" data-state="recording">
+                  <div class="preview-mic">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V5a3 3 0 0 0-3-3Zm6 8.5a1 1 0 1 0-2 0V11a4 4 0 0 1-8 0v-.5a1 1 0 1 0-2 0V11a6 6 0 0 0 5 5.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A6 6 0 0 0 18 11v-.5Z"/></svg>
+                  </div>
+                  <div class="preview-flow-copy">
+                    <strong>Listening</strong>
+                    <span>Release the hotkey to transcribe and paste</span>
+                  </div>
+                  <span class="preview-timer">0:08</span>
+                  <div class="preview-wave-row">
+                    <div class="preview-wave">
+                      ${renderMarketingWaveBars(34)}
+                    </div>
+                    <span class="preview-stop">
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.4"/></svg>
+                      Stop
+                    </span>
+                  </div>
+                </section>
+                <div class="preview-detail-grid">
+                  <div class="preview-detail">
+                    <small>Worker</small>
+                    <strong><span class="dot dot-good"></span>Online</strong>
+                  </div>
+                  <div class="preview-detail">
+                    <small>Cleanup</small>
+                    <strong>Off</strong>
+                  </div>
+                  <div class="preview-detail">
+                    <small>History</small>
+                    <strong>Local only</strong>
+                  </div>
+                </div>
               </div>
-              <div class="mock-timer">0:08</div>
-            </div>
-            <div class="mock-paste">
-              <div class="mock-paste-head">
-                <small class="mock-paste-label">Pasted into Slack · 0.7s after release</small>
-                <span class="mock-paste-app">slack.com</span>
-              </div>
-              <p class="mock-typing"><span>Following up on the deploy — the worker is healthy and the new dictation pill no longer flickers. Shipping the patch right after standup.</span></p>
             </div>
           </div>
-          <div class="mock-glow" aria-hidden="true"></div>
+          <div class="preview-overlay-pill">
+            <div class="preview-overlay-mic">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 1 0 6 0V5a3 3 0 0 0-3-3Zm6 8.5a1 1 0 1 0-2 0V11a4 4 0 0 1-8 0v-.5a1 1 0 1 0-2 0V11a6 6 0 0 0 5 5.92V20H8a1 1 0 1 0 0 2h8a1 1 0 1 0 0-2h-3v-3.08A6 6 0 0 0 18 11v-.5Z"/></svg>
+            </div>
+            <div class="preview-overlay-copy">
+              <strong>Listening</strong>
+              <span>Release Ctrl + Win to transcribe</span>
+            </div>
+            <div class="preview-overlay-wave">
+              ${renderMarketingWaveBars(20, 5)}
+            </div>
+            <span class="preview-pill-timer">0:08</span>
+          </div>
+          <div class="preview-glow" aria-hidden="true"></div>
         </aside>
       </div>
     </section>
@@ -2223,409 +2617,14 @@ function renderDashboardPage(): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="dark" />
+  <meta name="description" content="Manage your Laryn Pro plan, paired computers, and usage." />
   <link rel="icon" type="image/svg+xml" href="${favicon}" />
+  <link rel="stylesheet" href="/app/assets/dashboard.css?v=${DASHBOARD_ASSET_VERSION}" />
   <title>Account · Laryn</title>
-  <style>${sharedCss()}${dashboardCss()}</style>
 </head>
-<body class="dashboard">
-  <header class="dash-topbar">
-    <div class="dash-topbar-inner">
-      ${brandLink("sm")}
-      <nav class="dash-topnav" aria-label="Primary">
-        <a href="/app" data-active="true">Account</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/download">Download</a>
-      </nav>
-      <div id="dash-topbar-user" class="dash-topbar-user">
-        <button id="sign-in" class="btn btn-primary btn-sm">Sign in with Google</button>
-      </div>
-    </div>
-  </header>
-
-  <main class="dash-main">
-    <div class="dash-shell">
-      <header class="dash-page-head">
-        <div>
-          <p class="eyebrow"><span class="eyebrow-dot"></span>Account</p>
-          <h1>Dashboard</h1>
-          <p id="dash-subtitle" class="dash-subtitle">Your plan, your computers, and how much you've used this month.</p>
-        </div>
-      </header>
-
-      <div id="device-approval" class="approval-slot"></div>
-      <div id="content" class="dash-content"></div>
-    </div>
-  </main>
-
-  <script>
-    const params = new URLSearchParams(location.search);
-    let pendingCode = params.get("device_code") || sessionStorage.getItem("laryn.pendingDeviceCode") || "";
-    if (pendingCode) sessionStorage.setItem("laryn.pendingDeviceCode", pendingCode);
-    let currentAccount = null;
-    let loadingAccount = false;
-    let approvingDevice = false;
-    const revokingDevices = new Set();
-    const content = document.querySelector("#content");
-    const approval = document.querySelector("#device-approval");
-
-    async function json(url, options) {
-      const response = await fetch(url, { credentials: "include", ...options });
-      const text = await response.text();
-      let data = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = { error: "Invalid response", detail: text.slice(0, 180) };
-      }
-      if (!response.ok) throw new Error((data.detail || data.error || "Request failed") + " (HTTP " + response.status + ")");
-      return data;
-    }
-
-    const userSlot = document.querySelector("#dash-topbar-user");
-    const subtitle = document.querySelector("#dash-subtitle");
-
-    function setSignedOutTopbar() {
-      userSlot.innerHTML = '<button id="sign-in" class="btn btn-primary btn-sm">Sign in with Google</button>';
-      const button = userSlot.querySelector("#sign-in");
-      button.addEventListener("click", handleSignIn);
-    }
-
-    function setSignedInTopbar(account) {
-      const email = account && account.user ? account.user.email || "" : "";
-      const name = account && account.user ? account.user.name || "" : "";
-      const initial = (name || email || "L").trim().charAt(0).toUpperCase();
-      userSlot.innerHTML =
-        '<div class="user-pill">'
-          + '<span class="user-avatar" aria-hidden="true">' + escapeHtml(initial) + '</span>'
-          + '<div class="user-pill-text"><strong>' + escapeHtml(name || email.split("@")[0] || "Signed in") + '</strong>'
-          + (email ? '<small>' + escapeHtml(email) + '</small>' : '')
-          + '</div>'
-        + '</div>'
-        + '<button id="sign-out" class="btn btn-ghost btn-sm">Sign out</button>';
-      const signOutButton = userSlot.querySelector("#sign-out");
-      signOutButton.addEventListener("click", handleSignOut);
-    }
-
-    async function handleSignIn() {
-      const button = userSlot.querySelector("#sign-in");
-      if (!button || button.disabled) return;
-      button.disabled = true;
-      button.textContent = "Opening Google...";
-      try {
-        const data = await json("/api/auth/sign-in/social", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: "google", callbackURL: pendingCode ? "/app?device_code=" + encodeURIComponent(pendingCode) : "/app" })
-        });
-        if (data.url) location.href = data.url;
-      } catch (error) {
-        button.disabled = false;
-        button.textContent = "Sign in with Google";
-        approval.innerHTML = warnApproval("Sign in failed", error.message);
-      }
-    }
-
-    async function handleSignOut() {
-      try {
-        await json("/api/auth/sign-out", { method: "POST" });
-      } catch (error) {
-        // ignore — we'll still reset UI below
-      }
-      currentAccount = null;
-      setSignedOutTopbar();
-      subtitle.textContent = "Your plan, your computers, and how much you've used this month.";
-      content.innerHTML = signedOutHero();
-      const button = content.querySelector("#hero-sign-in");
-      if (button) button.addEventListener("click", handleSignIn);
-    }
-
-    setSignedOutTopbar();
-
-    async function load() {
-      if (loadingAccount) return;
-      loadingAccount = true;
-      try {
-        const account = await json("/api/account/me");
-        currentAccount = account;
-        setSignedInTopbar(account);
-        if (pendingCode) {
-          approval.innerHTML =
-            '<div class="approval-card"><div class="approval-text"><strong>Add a new computer</strong><p>Approve code <code>' + escapeHtml(pendingCode) + '</code> to link this computer to your account.</p></div><button id="approve-device" class="btn btn-primary btn-sm">Approve</button></div>';
-          document.querySelector("#approve-device").addEventListener("click", approveDevice);
-        }
-        subtitle.textContent = "Welcome back" + (account.user && account.user.name ? ", " + account.user.name.split(" ")[0] : "") + ".";
-        render(account);
-      } catch (error) {
-        currentAccount = null;
-        setSignedOutTopbar();
-        approval.innerHTML = pendingCode
-          ? '<div class="approval-card approval-warn"><div class="approval-text"><strong>Sign in to add this computer</strong><p>Once you\\'re signed in, approve code <code>' + escapeHtml(pendingCode) + '</code> to link it.</p></div></div>'
-          : "";
-        subtitle.textContent = "Sign in to manage your plan, computers, and usage.";
-        content.innerHTML = signedOutHero();
-        const button = content.querySelector("#hero-sign-in");
-        if (button) button.addEventListener("click", handleSignIn);
-      } finally {
-        loadingAccount = false;
-      }
-    }
-
-    function signedOutHero() {
-      return '<section class="dash-hero dash-hero-empty">'
-        + '<div class="dash-hero-glyph" aria-hidden="true"><span class="dash-hero-mic"></span></div>'
-        + '<div class="dash-hero-copy">'
-          + '<p class="eyebrow"><span class="eyebrow-dot"></span>Sign in</p>'
-          + '<h2>Sign in to your Laryn account.</h2>'
-          + '<p>Use your Google account to start Pro, add computers, and check your monthly usage.</p>'
-        + '</div>'
-        + '<div class="dash-hero-actions">'
-          + '<button id="hero-sign-in" class="btn btn-primary btn-lg">Sign in with Google</button>'
-          + '<a class="link-action" href="/download"><span>Download Laryn for Windows</span></a>'
-        + '</div>'
-      + '</section>';
-    }
-
-    function warnApproval(title, message) {
-      return '<div class="approval-card approval-warn"><div class="approval-text"><strong>' + escapeHtml(title) + '</strong><p>' + escapeHtml(message || "") + '</p></div></div>';
-    }
-
-    async function approveDevice() {
-      const code = pendingCode;
-      if (!code || approvingDevice) return;
-      approvingDevice = true;
-      const button = document.querySelector("#approve-device");
-      if (button) {
-        button.disabled = true;
-        button.textContent = "Approving...";
-      }
-      try {
-      history.replaceState(null, "", "/app");
-      await json("/api/device/approve", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ userCode: code }) });
-      pendingCode = "";
-      sessionStorage.removeItem("laryn.pendingDeviceCode");
-      approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Computer added</strong><p>You can head back to the Laryn app — it will finish setup in a few seconds.</p></div></div>';
-      await load();
-      } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Approval failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-      } finally {
-        approvingDevice = false;
-      }
-    }
-
-    function escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-    }
-
-    async function checkout() {
-      try {
-        const data = await json("/api/account/checkout/pro", { method: "POST" });
-        if (data.url) location.href = data.url;
-      } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Checkout failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-      }
-    }
-
-    async function portal() {
-      try {
-        const data = await json("/api/account/portal", { method: "POST" });
-        if (data.url) location.href = data.url;
-      } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Portal failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-      }
-    }
-
-    async function reconcileBilling() {
-      try {
-        const data = await json("/api/account/reconcile/polar", { method: "POST" });
-        const billing = data.billing || {};
-        approval.innerHTML = '<div class="approval-card approval-ok"><div class="approval-text"><strong>Billing refreshed</strong><p>' + (billing.proActive ? "Your Pro plan is active." : "No active Pro plan found.") + '</p></div></div>';
-        await load();
-      } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Refresh failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-      }
-    }
-
-    async function revoke(id) {
-      if (!id || revokingDevices.has(id)) return;
-      revokingDevices.add(id);
-      if (currentAccount && Array.isArray(currentAccount.devices)) {
-        currentAccount = {
-          ...currentAccount,
-          devices: currentAccount.devices.filter(device => device.id !== id)
-        };
-        render(currentAccount);
-      }
-      try {
-        await json("/api/account/devices/" + encodeURIComponent(id) + "/revoke", { method: "POST" });
-        await load();
-      } catch (error) {
-        approval.innerHTML = '<div class="approval-card approval-warn"><div class="approval-text"><strong>Revoke failed</strong><p>' + escapeHtml(error.message) + '</p></div></div>';
-        await load();
-      } finally {
-        revokingDevices.delete(id);
-      }
-    }
-
-    function render(account) {
-      const billing = account.billing || {};
-      const devices = (account.devices || []).filter(device => !device.revokedAt);
-      const usage = account.usage || { transcriptionCount: 0, audioDurationMs: 0 };
-      const credits = billing.usageCredits || { includedCents: 300 };
-      const proActive = Boolean(billing.proActive);
-      const creditPercent = creditUsagePercent(credits);
-      const usedCents = credits.consumedCents || 0;
-      const includedCents = credits.includedCents || 300;
-      const usedCredit = dollars(usedCents);
-      const includedCredit = dollars(includedCents);
-      const remaining = typeof credits.remainingCents === "number" ? credits.remainingCents : Math.max(0, includedCents - usedCents);
-      const overage = typeof credits.overageCents === "number" ? credits.overageCents : 0;
-      const usedPct = Math.min(100, Math.max(0, creditPercent));
-      const minutes = Math.round((usage.audioDurationMs || 0) / 60000);
-      const transcriptions = usage.transcriptionCount || 0;
-      const planLabel = proActive ? "Laryn Pro" : "Free account";
-      const planSubtitle = proActive
-        ? "$5 / month · " + escapeHtml(formatPlanStatus(billing.subscriptionStatus))
-        : "Start Pro to dictate into anything on your computer.";
-      const heroBadge = proActive
-        ? '<span class="badge badge-good"><span class="badge-dot"></span>Pro active</span>'
-        : '<span class="badge badge-warn"><span class="badge-dot"></span>Pro required</span>';
-      const heroPrimary = proActive
-        ? '<button id="portal" class="btn btn-primary btn-sm">Manage billing</button>'
-        : '<button id="checkout" class="btn btn-primary btn-sm">Get Pro · $5/mo</button>';
-      const heroSecondary = proActive
-        ? '<button id="checkout" class="btn btn-secondary btn-sm">Manage plan</button>'
-        : '<button id="portal" class="btn btn-secondary btn-sm">Manage billing</button>';
-
-      const overageNote = overage > 0
-        ? '<div class="usage-overage"><span class="badge badge-warn"><span class="badge-dot"></span>Past included</span><strong>' + escapeHtml(dollars(overage)) + '</strong><small>billed at our cost this month</small></div>'
-        : '';
-
-      const usageHero =
-        '<section class="dash-hero">'
-          + '<div class="dash-hero-meta">'
-            + heroBadge
-            + '<span class="dash-hero-plan">' + escapeHtml(planLabel) + '</span>'
-          + '</div>'
-          + '<h2 class="dash-hero-title">' + (proActive ? "You're all set. Talk into anything." : "One step from talking into anything.") + '</h2>'
-          + '<p class="dash-hero-sub">' + planSubtitle + '</p>'
-          + '<div class="dash-hero-actions">'
-            + heroPrimary
-            + heroSecondary
-            + '<button id="reconcile-billing" class="btn btn-ghost btn-sm">Refresh billing</button>'
-          + '</div>'
-        + '</section>';
-
-      const usageCard =
-        '<article class="dash-card dash-card-usage">'
-          + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Dictation this month</p><h3 class="dash-card-title">Included usage</h3></div>'
-            + '<span class="dash-card-pill">' + escapeHtml(includedCredit) + ' included</span>'
-          + '</header>'
-          + '<div class="usage-meter">'
-            + '<div class="usage-meter-row"><strong class="num">' + escapeHtml(usedCredit) + '</strong><span class="muted">of ' + escapeHtml(includedCredit) + '</span></div>'
-            + '<div class="usage-bar"><span style="width:' + usedPct + '%" class="' + (overage > 0 ? "is-over" : "") + '"></span></div>'
-            + '<div class="usage-meter-row usage-meter-row-foot">'
-              + '<small>' + escapeHtml(dollars(remaining)) + ' left</small>'
-              + '<small>' + Math.round(usedPct) + '% used</small>'
-            + '</div>'
-          + '</div>'
-          + overageNote
-        + '</article>';
-
-      const activityCard =
-        '<article class="dash-card dash-card-stats">'
-          + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Activity</p><h3 class="dash-card-title">All-time totals</h3></div>'
-          + '</header>'
-          + '<dl class="stat-grid">'
-            + '<div class="stat-item"><dt>Transcripts</dt><dd class="num">' + transcriptions + '</dd></div>'
-            + '<div class="stat-item"><dt>Minutes</dt><dd class="num">' + minutes + '</dd></div>'
-            + '<div class="stat-item"><dt>Devices</dt><dd class="num">' + devices.length + '</dd></div>'
-          + '</dl>'
-        + '</article>';
-
-      const accountCard =
-        '<article class="dash-card dash-card-account">'
-          + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Signed in</p><h3 class="dash-card-title truncate">' + escapeHtml(account.user.name || account.user.email || "") + '</h3></div>'
-          + '</header>'
-          + '<dl class="kv-list">'
-            + '<div class="kv-row"><dt>Email</dt><dd class="truncate">' + escapeHtml(account.user.email || "—") + '</dd></div>'
-            + '<div class="kv-row"><dt>Plan</dt><dd>' + escapeHtml(formatPlanStatus(billing.subscriptionStatus, proActive)) + '</dd></div>'
-            + '<div class="kv-row"><dt>Included</dt><dd>' + escapeHtml(includedCredit) + ' / month</dd></div>'
-          + '</dl>'
-        + '</article>';
-
-      const devicesCard =
-        '<article class="dash-card dash-card-devices">'
-          + '<header class="dash-card-head">'
-            + '<div><p class="eyebrow"><span class="eyebrow-dot"></span>Your computers</p><h3 class="dash-card-title">' + devices.length + ' signed in</h3></div>'
-            + '<a class="link-action" href="/download">Add another</a>'
-          + '</header>'
-          + (devices.length === 0
-              ? '<div class="empty-state">'
-                  + '<p>No computers signed in yet.</p>'
-                  + '<p class="muted">Install Laryn for Windows, open Settings, and sign in with the same Google account.</p>'
-                + '</div>'
-              : '<ul class="device-list" role="list">' + devices.map(device => (
-                  '<li class="device-row">'
-                    + '<div class="device-icon" aria-hidden="true">'
-                      + '<svg viewBox="0 0 16 16" width="16" height="16"><path fill="currentColor" d="M2.5 4.25c0-.97.78-1.75 1.75-1.75h7.5c.97 0 1.75.78 1.75 1.75v5.5c0 .97-.78 1.75-1.75 1.75h-7.5A1.75 1.75 0 0 1 2.5 9.75v-5.5Zm1.75-.25a.25.25 0 0 0-.25.25v5.5c0 .14.11.25.25.25h7.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-7.5Zm-.5 9.5a.75.75 0 0 1 .75-.75h7c.41 0 .75.34.75.75s-.34.75-.75.75h-7a.75.75 0 0 1-.75-.75Z"/></svg>'
-                    + '</div>'
-                    + '<div class="device-text">'
-                      + '<strong class="truncate">' + escapeHtml(device.deviceName) + '</strong>'
-                      + '<small>' + escapeHtml(device.lastSeenAt ? "Last seen " + formatDate(device.lastSeenAt) : "Paired " + formatDate(device.createdAt)) + '</small>'
-                    + '</div>'
-                    + '<button data-revoke="' + escapeHtml(device.id) + '" class="btn btn-ghost btn-sm"' + (revokingDevices.has(device.id) ? " disabled" : "") + '>' + (revokingDevices.has(device.id) ? "Signing out…" : "Sign out") + '</button>'
-                  + '</li>'
-                )).join("") + '</ul>')
-        + '</article>';
-
-      content.innerHTML = usageHero + '<div class="dash-grid">' + usageCard + activityCard + accountCard + devicesCard + '</div>';
-
-      const checkoutBtn = document.querySelector("#checkout");
-      const portalBtn = document.querySelector("#portal");
-      const reconcileBtn = document.querySelector("#reconcile-billing");
-      if (checkoutBtn) checkoutBtn.addEventListener("click", checkout);
-      if (portalBtn) portalBtn.addEventListener("click", portal);
-      if (reconcileBtn) reconcileBtn.addEventListener("click", reconcileBilling);
-      document.querySelectorAll("[data-revoke]").forEach(button => button.addEventListener("click", () => revoke(button.dataset.revoke)));
-    }
-
-    function dollars(cents) {
-      return "$" + (Number(cents || 0) / 100).toFixed(2);
-    }
-
-    function formatDate(value) {
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return "unknown";
-      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    }
-
-    function formatPlanStatus(status, fallbackActive) {
-      if (status === "active") return "Active";
-      if (status === "trialing") return "Trial";
-      if (status === "past_due") return "Past due";
-      if (status === "canceled" || status === "cancelled") return "Cancelled";
-      if (status === "incomplete") return "Incomplete";
-      if (status === "incomplete_expired") return "Expired";
-      if (status === "unpaid") return "Unpaid";
-      if (status === "paused") return "Paused";
-      if (status) {
-        return status.replace(/_/g, " ").replace(/\\b\\w/g, function (c) { return c.toUpperCase(); });
-      }
-      return fallbackActive ? "Active" : "Free";
-    }
-
-    function creditUsagePercent(credits) {
-      const consumed = Number(credits.consumedUnits || 0);
-      const credited = Number(credits.creditedUnits || credits.includedUnits || 0);
-      if (!credited) return 0;
-      return (consumed / credited) * 100;
-    }
-
-    load();
-  </script>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/app/assets/dashboard.js?v=${DASHBOARD_ASSET_VERSION}"></script>
 </body>
 </html>`);
 }
@@ -2785,36 +2784,65 @@ function marketingCss(): string {
 .dot-good.hero-meta-dot,.hero-meta-dot.dot-good{background:var(--good);box-shadow:0 0 12px rgba(52,211,153,.5)}
 .download-meta{margin-top:18px;color:var(--text-mute);font-size:13px}
 
-/* ---------- Hero mock ---------- */
-.hero-mock{position:relative;display:grid;align-items:center;justify-items:end}
-.mock-frame{position:relative;width:100%;max-width:560px;border-radius:var(--radius-xl);padding:18px;background:linear-gradient(180deg,rgba(22,34,58,.85) 0%,rgba(13,22,34,.92) 100%);box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 1px 0 rgba(255,255,255,.06),0 36px 80px -24px rgba(0,0,0,.7);display:grid;gap:14px;z-index:1}
-.mock-glow{position:absolute;inset:-40px -10% -40px auto;width:60%;background:radial-gradient(closest-side,rgba(79,143,255,.32),transparent 70%);filter:blur(30px);z-index:0;pointer-events:none}
-.mock-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;height:34px;padding:0 12px;border-radius:var(--radius);background:rgba(255,255,255,.03);box-shadow:inset 0 0 0 1px var(--line);color:var(--text-mute);font-size:11px;letter-spacing:.04em}
-.mock-bar small{flex:1;text-align:center;color:var(--text-mute)}
-.mock-bar-kbd{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--text-soft);background:rgba(255,255,255,.04);padding:4px 8px;border-radius:5px;box-shadow:inset 0 0 0 1px var(--line-strong)}
-.mock-bar-dots{display:flex;gap:6px}
-.mock-bar-dots span{width:10px;height:10px;border-radius:999px;background:rgba(255,255,255,.08)}
-.mock-bar-dots span:first-child{background:#ff6173}
-.mock-bar-dots span:nth-child(2){background:#f5b057}
-.mock-bar-dots span:nth-child(3){background:#34d399}
-.mock-overlay{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;gap:14px;padding:14px 16px;border-radius:var(--radius-md);background:linear-gradient(180deg,rgba(14,22,34,.95) 0%,rgba(8,14,25,.95) 100%);box-shadow:inset 0 0 0 1px rgba(52,211,153,.34),0 0 0 6px rgba(52,211,153,.04)}
-.mock-mic{width:48px;height:48px;border-radius:999px;flex:0 0 auto;background:radial-gradient(circle at 32% 28%,#6ee7b7 0%,#15a564 72%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 0 26px rgba(52,211,153,.45);position:relative}
-.mock-mic::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(52,211,153,.55);animation:mock-pulse 1.6s ease-out infinite}
-@keyframes mock-pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}70%{box-shadow:0 0 0 16px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
-.mock-text{display:grid;min-width:0}
-.mock-text strong{font-size:14px;font-weight:600;color:#fff}
-.mock-text span{font-size:12px;color:var(--text-soft);margin-top:2px}
-.mock-wave{display:flex;align-items:flex-end;gap:3px;height:32px;width:140px}
-.mock-wave span{flex:1;min-width:2px;max-width:4px;border-radius:999px;background:var(--good);height:var(--h);opacity:.6;animation:mock-wave 1.2s ease-in-out infinite alternate;animation-delay:var(--d,0ms)}
-@keyframes mock-wave{0%{transform:scaleY(.5);opacity:.4}100%{transform:scaleY(1);opacity:.85}}
-.mock-timer{font-size:12px;font-weight:600;color:var(--text-soft);background:rgba(255,255,255,.05);padding:5px 9px;border-radius:6px;font-variant-numeric:tabular-nums;box-shadow:inset 0 0 0 1px var(--line-strong)}
-.mock-paste{border-radius:var(--radius-md);padding:16px 18px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px var(--line)}
-.mock-paste-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
-.mock-paste-label{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--brand);text-transform:uppercase}
-.mock-paste-app{font-size:11px;color:var(--text-mute);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
-.mock-typing{font-size:14px;line-height:1.55;color:var(--text)}
-.mock-typing span{border-right:2px solid var(--brand);padding-right:2px;animation:caret 1s steps(2) infinite}
-@keyframes caret{50%{border-color:transparent}}
+/* ---------- Hero preview ---------- */
+.hero-preview{position:relative;display:grid;align-items:center;justify-items:end;min-width:0;padding-bottom:54px}
+.preview-window{position:relative;width:100%;max-width:620px;border-radius:18px;overflow:hidden;background:linear-gradient(180deg,rgba(19,30,48,.96),rgba(8,14,25,.98));box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 1px 0 rgba(255,255,255,.07),0 36px 90px -28px rgba(0,0,0,.76);z-index:1}
+.preview-window::before{content:"";position:absolute;inset:0;background:radial-gradient(520px 260px at 82% 5%,rgba(79,143,255,.18),transparent 62%);pointer-events:none}
+.preview-titlebar{position:relative;z-index:1;height:48px;padding:0 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.025)}
+.preview-brand{display:flex;align-items:center;gap:9px;min-width:0;color:var(--text)}
+.preview-brand .brand-mark{width:18px;height:18px;filter:drop-shadow(0 0 12px rgba(79,143,255,.5))}
+.preview-brand strong{font-size:13px;font-weight:700}
+.preview-title-status{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--text-soft)}
+.preview-window-controls{display:flex;align-items:center;gap:8px;color:var(--text-mute)}
+.preview-window-controls span{position:relative;width:14px;height:14px;border-radius:3px}
+.preview-window-controls span:first-child::before{content:"";position:absolute;left:2px;right:2px;top:7px;height:1px;background:currentColor;opacity:.85}
+.preview-window-controls span:nth-child(2)::before{content:"";position:absolute;inset:3px;border:1px solid currentColor;border-radius:2px;opacity:.75}
+.preview-window-controls span:nth-child(3)::before,.preview-window-controls span:nth-child(3)::after{content:"";position:absolute;left:3px;right:3px;top:6px;height:1px;background:currentColor;opacity:.85}
+.preview-window-controls span:nth-child(3)::before{transform:rotate(45deg)}
+.preview-window-controls span:nth-child(3)::after{transform:rotate(-45deg)}
+.preview-app{position:relative;z-index:1;display:grid;grid-template-columns:128px minmax(0,1fr);min-height:348px;background:radial-gradient(520px 320px at 100% 0%,rgba(34,211,238,.08),transparent 58%),var(--surface)}
+.preview-rail{padding:18px 12px;background:rgba(4,7,13,.36);border-right:1px solid var(--line);display:grid;align-content:start;gap:8px}
+.preview-nav-item{height:32px;display:flex;align-items:center;padding:0 10px;border-radius:8px;color:var(--text-mute);font-size:12px;font-weight:600}
+.preview-nav-item.active{color:#fff;background:rgba(79,143,255,.15);box-shadow:inset 0 0 0 1px rgba(79,143,255,.32)}
+.preview-main{padding:20px;display:grid;gap:14px;min-width:0;align-content:start}
+.preview-head{display:flex;align-items:start;justify-content:space-between;gap:16px}
+.preview-head small{display:block;font-size:11px;font-weight:600;color:var(--text-mute)}
+.preview-head h3{margin-top:2px;font-size:21px;line-height:1.1;font-weight:650;color:#fff}
+.preview-hotkey{display:flex;align-items:center;gap:5px;color:var(--text-mute);font-size:12px;white-space:nowrap}
+.preview-hotkey kbd{font-size:11px;padding:4px 8px;border-radius:7px}
+.preview-flow{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:15px;padding:18px;border-radius:14px;background:linear-gradient(180deg,rgba(14,22,34,.95),rgba(8,14,25,.95));box-shadow:inset 0 0 0 1px rgba(52,211,153,.34),0 0 0 6px rgba(52,211,153,.04)}
+.preview-mic,.preview-overlay-mic{position:relative;display:grid;place-items:center;border-radius:999px;background:radial-gradient(circle at 32% 28%,#6ee7b7 0%,#15a564 72%);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 0 26px rgba(52,211,153,.48);flex:0 0 auto}
+.preview-mic{width:56px;height:56px}
+.preview-overlay-mic{width:44px;height:44px}
+.preview-mic svg,.preview-overlay-mic svg{width:22px;height:22px;fill:currentColor}
+.preview-overlay-mic svg{width:18px;height:18px}
+.preview-mic::after,.preview-overlay-mic::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:0 0 0 0 rgba(52,211,153,.55);animation:preview-pulse 1.45s ease-out infinite;pointer-events:none}
+@keyframes preview-pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}70%{box-shadow:0 0 0 14px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+.preview-flow-copy,.preview-overlay-copy{display:grid;min-width:0}
+.preview-flow-copy strong,.preview-overlay-copy strong{font-weight:650;color:#fff}
+.preview-flow-copy strong{font-size:16px}
+.preview-flow-copy span{font-size:13px;line-height:1.35;margin-top:2px;color:var(--text-soft)}
+.preview-overlay-copy span{color:var(--text-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview-timer,.preview-pill-timer{font-weight:650;font-variant-numeric:tabular-nums;color:var(--text-soft);background:rgba(255,255,255,.05);border-radius:7px;box-shadow:inset 0 0 0 1px var(--line-strong)}
+.preview-timer{font-size:20px;color:#fff;padding:7px 10px}
+.preview-wave-row{grid-column:1/-1;display:flex;align-items:center;gap:12px;min-width:0}
+.preview-wave,.preview-overlay-wave{display:flex;align-items:flex-end;gap:3px;min-width:0}
+.preview-wave{height:48px;flex:1}
+.preview-overlay-wave{height:34px;width:128px}
+.preview-wave span,.preview-overlay-wave span{flex:1;min-width:2px;max-width:5px;border-radius:999px;background:var(--good);height:var(--h);opacity:.62;animation:preview-wave 1.15s ease-in-out infinite alternate;animation-delay:var(--d,0ms)}
+.preview-overlay-wave span{max-width:4px}
+@keyframes preview-wave{0%{transform:scaleY(.52);opacity:.38}100%{transform:scaleY(1);opacity:.88}}
+.preview-stop{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 11px;border-radius:8px;background:rgba(255,97,115,.14);box-shadow:inset 0 0 0 1px rgba(255,97,115,.34);color:var(--bad);font-size:12px;font-weight:650;white-space:nowrap}
+.preview-stop svg{width:11px;height:11px;fill:currentColor}
+.preview-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.preview-detail{min-width:0;padding:12px;border-radius:12px;background:rgba(255,255,255,.025);box-shadow:inset 0 0 0 1px var(--line)}
+.preview-detail small{display:block;font-size:11px;color:var(--text-mute)}
+.preview-detail strong{display:flex;align-items:center;gap:7px;margin-top:2px;font-size:13px;font-weight:650;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preview-overlay-pill{position:absolute;left:28px;right:0;bottom:0;z-index:2;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:14px;padding:14px 16px;border-radius:18px;background:linear-gradient(180deg,rgba(20,30,49,.96),rgba(8,14,25,.98));box-shadow:inset 0 0 0 1px rgba(52,211,153,.34),inset 0 1px 0 rgba(255,255,255,.06),0 24px 64px rgba(0,0,0,.58),0 0 0 6px rgba(52,211,153,.04);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2)}
+.preview-overlay-copy strong{font-size:14px}
+.preview-overlay-copy span{font-size:12px;margin-top:1px}
+.preview-pill-timer{font-size:12px;padding:5px 9px}
+.preview-glow{position:absolute;inset:-44px -12% -28px auto;width:72%;background:radial-gradient(closest-side,rgba(79,143,255,.32),transparent 70%);filter:blur(30px);z-index:0;pointer-events:none}
 
 /* ---------- How it works (flow) ---------- */
 .section-flow{padding-top:0}
@@ -2932,7 +2960,7 @@ function marketingCss(): string {
 /* ---------- Responsive ---------- */
 @media(max-width:1080px){
   .hero-shell{grid-template-columns:1fr;gap:48px}
-  .hero-mock{justify-items:start}
+  .hero-preview{justify-items:start}
   .pricing-teaser{grid-template-columns:1fr;gap:32px}
   .pricing-grid{grid-template-columns:1fr}
 }
@@ -2951,142 +2979,27 @@ function marketingCss(): string {
   .hero-actions{flex-direction:column;align-items:stretch;gap:14px}
   .hero-actions .btn{width:100%}
   .hero-actions-centered .btn{width:auto}
+  .hero-preview{padding-bottom:0}
+  .preview-window{border-radius:16px}
+  .preview-titlebar{height:44px;padding:0 12px}
+  .preview-title-status,.preview-window-controls{display:none}
+  .preview-app{grid-template-columns:1fr;min-height:auto}
+  .preview-rail{display:none}
+  .preview-main{padding:16px;gap:12px}
+  .preview-head{display:grid;gap:10px}
+  .preview-flow{grid-template-columns:auto minmax(0,1fr);padding:16px}
+  .preview-timer{grid-column:2;justify-self:start;font-size:14px;padding:5px 9px}
+  .preview-mic{width:48px;height:48px}
+  .preview-flow-copy span{white-space:normal}
+  .preview-wave-row{gap:10px}
+  .preview-detail-grid{grid-template-columns:1fr}
+  .preview-overlay-pill{position:relative;left:auto;right:auto;bottom:auto;width:calc(100% - 24px);margin:-24px 12px 0;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:12px;border-radius:16px}
+  .preview-overlay-wave{display:none}
   .case-card{padding:18px}
   .pricing-card{padding:24px}
   .footer-cols{grid-template-columns:1fr}
   .compare-row{grid-template-columns:1fr;gap:4px}
   .pricing-price-num{font-size:40px}
-}
-`;
-}
-
-function dashboardCss(): string {
-  return `
-.dashboard{background:var(--bg);min-height:100dvh;isolation:isolate}
-
-/* ---------- Top bar ---------- */
-.dash-topbar{position:sticky;top:0;z-index:10;background:rgba(4,7,13,.78);backdrop-filter:blur(16px) saturate(1.1);-webkit-backdrop-filter:blur(16px) saturate(1.1);border-bottom:1px solid var(--line)}
-.dash-topbar-inner{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:flex;align-items:center;justify-content:space-between;gap:24px;height:64px}
-.dash-topnav{display:flex;align-items:center;gap:4px}
-.dash-topnav a{padding:8px 14px;border-radius:8px;font-size:14px;font-weight:500;color:var(--text-soft);transition:color 120ms ease,background-color 120ms ease}
-.dash-topnav a:hover{color:var(--text)}
-.dash-topnav a[data-active="true"]{color:var(--text);background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
-.dash-topbar-user{display:flex;align-items:center;gap:14px;min-height:40px}
-.user-pill{display:flex;align-items:center;gap:10px;padding:6px 12px 6px 6px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong)}
-.user-avatar{width:28px;height:28px;border-radius:999px;background:linear-gradient(135deg,#1e64f0,#22d3ee 100%);display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700;flex:0 0 auto}
-.user-pill-text{display:grid;line-height:1.2;min-width:0}
-.user-pill-text strong{font-size:13px;font-weight:600;color:var(--text);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.user-pill-text small{font-size:11px;color:var(--text-mute);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* ---------- Page shell ---------- */
-.dash-main{padding:48px 0 96px;background:radial-gradient(900px 500px at 10% -10%,rgba(79,143,255,.12),transparent 60%),radial-gradient(700px 380px at 90% 0%,rgba(34,211,238,.08),transparent 60%),var(--bg)}
-.dash-shell{max-width:1240px;margin:0 auto;padding:0 clamp(20px,4vw,40px);display:grid;gap:28px;min-width:0}
-
-.dash-page-head{display:grid;gap:10px}
-.dash-page-head h1{font-size:clamp(30px,3.6vw,44px);font-weight:600;letter-spacing:-0.022em;color:var(--text);max-width:24ch}
-.dash-subtitle{font-size:16px;color:var(--text-soft);max-width:60ch}
-
-/* ---------- Approval slot ---------- */
-.approval-slot:empty{display:none}
-.approval-card{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:18px 22px;border-radius:var(--radius-md);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong)}
-.approval-card.approval-ok{box-shadow:inset 0 0 0 1px rgba(52,211,153,.4);background:linear-gradient(180deg,rgba(52,211,153,.08),rgba(13,22,34,.4))}
-.approval-card.approval-warn{box-shadow:inset 0 0 0 1px rgba(255,97,115,.4);background:linear-gradient(180deg,rgba(255,97,115,.08),rgba(13,22,34,.4))}
-.approval-text{display:grid;gap:4px;min-width:0}
-.approval-text strong{font-size:14px;font-weight:600;color:var(--text)}
-.approval-text p{font-size:13px;color:var(--text-soft);line-height:1.5}
-
-/* ---------- Hero card ---------- */
-.dash-hero{position:relative;padding:36px 36px 32px;border-radius:var(--radius-xl);background:linear-gradient(135deg,rgba(79,143,255,.18) 0%,rgba(34,211,238,.10) 60%,rgba(167,139,250,.12) 100%);box-shadow:inset 0 0 0 1px var(--line-bright);overflow:hidden;display:grid;gap:18px}
-.dash-hero::before{content:"";position:absolute;inset:0;background:radial-gradient(700px 360px at 100% -10%,rgba(255,255,255,.06),transparent 60%);pointer-events:none}
-.dash-hero > *{position:relative;z-index:1}
-.dash-hero-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.dash-hero-plan{font-size:14px;font-weight:600;color:var(--text-soft);letter-spacing:.02em}
-.dash-hero-title{font-size:clamp(24px,3vw,32px);font-weight:600;letter-spacing:-0.018em;color:var(--text);max-width:32ch}
-.dash-hero-sub{font-size:15px;color:var(--text-soft);line-height:1.55;max-width:60ch}
-.dash-hero-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
-
-.dash-hero-empty{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:24px;background:linear-gradient(135deg,rgba(79,143,255,.18) 0%,rgba(20,30,49,.6) 100%)}
-.dash-hero-glyph{width:80px;height:80px;border-radius:22px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px var(--line-bright);display:grid;place-items:center;flex:0 0 auto}
-.dash-hero-mic{width:42px;height:42px;border-radius:999px;background:radial-gradient(circle at 32% 28%,#6aa5ff,#1d52d3 72%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 0 22px rgba(47,111,255,.4)}
-.dash-hero-empty .dash-hero-copy{display:grid;gap:6px;max-width:520px}
-.dash-hero-empty h2{font-size:clamp(22px,2.8vw,30px);font-weight:600;letter-spacing:-0.018em;color:var(--text);max-width:26ch}
-.dash-hero-empty p{font-size:15px;color:var(--text-soft);line-height:1.55}
-.dash-hero-empty .dash-hero-actions{margin:0;flex-direction:column;align-items:flex-end;gap:10px}
-
-/* ---------- Content grid ---------- */
-.dash-content{display:grid;gap:24px;min-width:0}
-.dash-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px}
-
-.dash-card{padding:26px 24px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),var(--shadow-card);display:grid;align-content:start;gap:16px;min-width:0}
-.dash-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;min-width:0}
-.dash-card-head > div{min-width:0}
-.dash-card-title{font-size:18px;font-weight:600;letter-spacing:-0.012em;color:var(--text);margin-top:8px;min-width:0}
-.dash-card-pill{font-size:11px;font-weight:600;color:var(--text-soft);padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong);white-space:nowrap}
-
-.dash-card-usage{grid-column:span 8}
-.dash-card-account{grid-column:span 4}
-.dash-card-stats{grid-column:span 5}
-.dash-card-devices{grid-column:span 7}
-
-/* ---------- Usage meter ---------- */
-.usage-meter{display:grid;gap:10px;margin-top:4px}
-.usage-meter-row{display:flex;align-items:baseline;justify-content:space-between;gap:14px}
-.usage-meter-row strong{font-size:32px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum"}
-.usage-meter-row span{font-size:14px}
-.usage-meter-row-foot small{font-size:12px;color:var(--text-mute);font-feature-settings:"tnum"}
-.usage-bar{height:10px;border-radius:999px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden;position:relative}
-.usage-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand) 0%,var(--accent) 100%);box-shadow:0 0 18px rgba(79,143,255,.45);transition:width 240ms ease}
-.usage-bar span.is-over{background:linear-gradient(90deg,var(--warn) 0%,var(--bad) 100%);box-shadow:0 0 18px rgba(245,176,87,.45)}
-
-.usage-overage{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:rgba(245,176,87,.08);box-shadow:inset 0 0 0 1px rgba(245,176,87,.28)}
-.usage-overage strong{font-size:18px;font-weight:600;color:var(--warn);font-feature-settings:"tnum"}
-.usage-overage small{font-size:12px;color:var(--text-soft)}
-
-/* ---------- Stat grid ---------- */
-.stat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:end}
-.stat-item{display:grid;gap:8px;min-width:0}
-.stat-item dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stat-item dd{font-size:28px;font-weight:600;color:var(--text);letter-spacing:-0.018em;font-feature-settings:"tnum";line-height:1}
-
-/* ---------- Key/value list ---------- */
-.kv-list{display:grid;gap:1px;border-radius:var(--radius);overflow:hidden;background:var(--line)}
-.kv-row{background:var(--surface-soft);display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;padding:11px 14px;align-items:center;min-width:0}
-.kv-row dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:600}
-.kv-row dd{font-size:14px;color:var(--text);min-width:0}
-
-/* ---------- Devices ---------- */
-.empty-state{padding:18px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line)}
-.empty-state p{font-size:14px;line-height:1.55}
-.empty-state p:first-child{color:var(--text);font-weight:600}
-.device-list{list-style:none;display:grid;gap:8px}
-.device-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px 14px;border-radius:var(--radius);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--line);transition:box-shadow 120ms ease,background-color 120ms ease;min-width:0}
-.device-row:hover{box-shadow:inset 0 0 0 1px var(--line-bright);background:rgba(255,255,255,.03)}
-.device-icon{width:36px;height:36px;border-radius:10px;background:rgba(79,143,255,.12);box-shadow:inset 0 0 0 1px rgba(79,143,255,.28);color:var(--brand);display:grid;place-items:center;flex:0 0 auto}
-.device-text{display:grid;gap:2px;min-width:0}
-.device-text strong{font-size:14px;font-weight:600;color:var(--text)}
-.device-text small{font-size:12px;color:var(--text-mute)}
-
-/* ---------- Responsive ---------- */
-@media(max-width:1080px){
-  .dash-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .dash-card-usage,.dash-card-account,.dash-card-stats,.dash-card-devices{grid-column:span 2}
-}
-@media(max-width:760px){
-  .dash-topnav{display:none}
-  .dash-grid{grid-template-columns:1fr;gap:16px}
-  .dash-card-usage,.dash-card-stats,.dash-card-account,.dash-card-devices{grid-column:auto}
-  .approval-card{flex-direction:column;align-items:flex-start}
-  .dash-hero{padding:28px 24px}
-  .dash-hero-empty{grid-template-columns:1fr;text-align:left}
-  .dash-hero-empty .dash-hero-actions{align-items:stretch}
-  .dash-hero-empty .dash-hero-actions .btn{width:100%}
-  .stat-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-  .user-pill-text{display:none}
-}
-@media(max-width:480px){
-  .stat-grid{grid-template-columns:1fr;gap:14px;padding-top:4px;border-top:1px solid var(--line)}
-  .stat-item{padding-top:14px;border-top:1px solid var(--line)}
-  .stat-item:first-child{padding-top:0;border-top:0}
 }
 `;
 }
@@ -3134,7 +3047,7 @@ function transcriptionPrompt(env: Env): string {
 }
 
 function cloudflareAccountId(env: Env): string {
-  return env.CLOUDFLARE_ACCOUNT_ID || DEFAULT_CLOUDFLARE_ACCOUNT_ID;
+  return requiredConfig(env.CLOUDFLARE_ACCOUNT_ID, "CLOUDFLARE_ACCOUNT_ID");
 }
 
 function polarUsageEventName(env: Pick<Env, "POLAR_USAGE_EVENT_NAME">): string {
@@ -3145,12 +3058,40 @@ function includedCreditUnits(env: Pick<Env, "LARYN_INCLUDED_CREDIT_UNITS">): num
   return positiveInteger(env.LARYN_INCLUDED_CREDIT_UNITS, DEFAULT_INCLUDED_CREDIT_UNITS);
 }
 
+function monthlyUsageCapUnits(env: Pick<Env, "LARYN_MONTHLY_USAGE_CAP_UNITS" | "LARYN_INCLUDED_CREDIT_UNITS">): number {
+  return positiveInteger(env.LARYN_MONTHLY_USAGE_CAP_UNITS, includedCreditUnits(env));
+}
+
 function polarUnitMicroUsd(env: Pick<Env, "LARYN_POLAR_UNIT_MICRO_USD">): number {
   return positiveInteger(env.LARYN_POLAR_UNIT_MICRO_USD, DEFAULT_POLAR_UNIT_MICRO_USD);
 }
 
 function whisperMicroUsdPerAudioMinute(env?: Pick<Env, "LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE">): number {
   return positiveInteger(env?.LARYN_WHISPER_MICRO_USD_PER_AUDIO_MINUTE, DEFAULT_WHISPER_MICRO_USD_PER_AUDIO_MINUTE);
+}
+
+function groqWhisperMicroUsdPerAudioMinute(env?: Pick<Env, "LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE">): number {
+  return positiveInteger(env?.LARYN_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE, DEFAULT_GROQ_WHISPER_MICRO_USD_PER_AUDIO_MINUTE);
+}
+
+function groqMinBillableAudioMs(env?: Pick<Env, "LARYN_GROQ_MIN_BILLABLE_AUDIO_MS">): number {
+  return positiveInteger(env?.LARYN_GROQ_MIN_BILLABLE_AUDIO_MS, DEFAULT_GROQ_MIN_BILLABLE_AUDIO_MS);
+}
+
+function rateLimitWindowSeconds(env: Pick<Env, "LARYN_RATE_LIMIT_WINDOW_SECONDS">): number {
+  return positiveInteger(env.LARYN_RATE_LIMIT_WINDOW_SECONDS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS);
+}
+
+function rateLimitMaxRequests(env: Pick<Env, "LARYN_RATE_LIMIT_MAX_REQUESTS">): number {
+  return positiveInteger(env.LARYN_RATE_LIMIT_MAX_REQUESTS, DEFAULT_RATE_LIMIT_MAX_REQUESTS);
+}
+
+function maxConcurrentTranscriptionsPerUser(env: Pick<Env, "LARYN_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER">): number {
+  return positiveInteger(env.LARYN_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER, DEFAULT_MAX_CONCURRENT_TRANSCRIPTIONS_PER_USER);
+}
+
+function verboseLogsEnabled(env: Pick<Env, "LARYN_VERBOSE_LOGS">): boolean {
+  return env.LARYN_VERBOSE_LOGS === "1" || env.LARYN_VERBOSE_LOGS === "true";
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -3253,6 +3194,27 @@ function extractTranscriptText(payload: unknown): string {
     getPath(payload, ["text"]),
     getPath(payload, ["transcript"])
   ]);
+}
+
+function transcriptionProviderFromPayload(payload: unknown, fallback: TranscriptionProvider): TranscriptionProvider {
+  const value = firstStringValue([
+    getPath(payload, ["transcriptionProvider"]),
+    getPath(payload, ["provider"]),
+    getPath(payload, ["result", "transcriptionProvider"]),
+    getPath(payload, ["result", "provider"])
+  ]);
+  return value === "workers-ai" || value === "groq" ? value : fallback;
+}
+
+function transcriptionModelFromPayload(payload: unknown, fallback: string): string {
+  return (
+    firstStringValue([
+      getPath(payload, ["transcriptionModel"]),
+      getPath(payload, ["model"]),
+      getPath(payload, ["result", "transcriptionModel"]),
+      getPath(payload, ["result", "model"])
+    ]) || fallback
+  );
 }
 
 function extractGeneratedText(payload: unknown): string {
@@ -3358,8 +3320,39 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function runInBackground(env: Env, task: Promise<unknown>): void {
+  const guarded = task.catch((error) => {
+    console.warn(JSON.stringify({ level: "warn", event: "background-task:failed", error: formatError(error) }));
+  });
+  if (env.EXECUTION_CTX) {
+    env.EXECUTION_CTX.waitUntil(guarded);
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
+}
+
+function hasConfig(value: string | undefined): value is string {
+  if (!value?.trim()) {
+    return false;
+  }
+
+  return !isPlaceholderConfigValue(value);
+}
+
+function requiredConfig(value: string | undefined, name: string): string {
+  if (!hasConfig(value)) {
+    throw new Error(`${name} is not configured`);
+  }
+
+  return value.trim();
+}
+
+function isPlaceholderConfigValue(value: string): boolean {
+  return /^(your_|replace_|example|placeholder|changeme|change_me|dummy|test|sandbox|<|\$\{\{|missing-|00000000-0000-0000-0000-000000000000)/i.test(
+    value.trim()
+  );
 }
 
 function formatError(error: unknown): { name?: string; message: string; stack?: string } {
@@ -3411,11 +3404,15 @@ function publicAppUrl(env: Env): string {
 }
 
 function updateBaseUrl(env: Pick<Env, "LARYN_UPDATE_BASE_URL">): string {
-  return (env.LARYN_UPDATE_BASE_URL || "https://pub-20b1f8f56fed41fdb74c874201491380.r2.dev").replace(/\/$/, "");
+  return (env.LARYN_UPDATE_BASE_URL || "").replace(/\/$/, "");
 }
 
 async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
   const baseUrl = updateBaseUrl(env);
+  if (!baseUrl) {
+    return null;
+  }
+
   const response = await fetch(`${baseUrl}/latest.yml`, {
     cf: { cacheTtl: 60, cacheEverything: true }
   });
@@ -3433,23 +3430,65 @@ async function latestWindowsInstallerUrl(env: Env): Promise<string | null> {
   }
 
   const latestYml = await response.text();
-  const installerPath = extractLatestInstallerPath(latestYml);
-  if (!installerPath) {
+  const installerUrl = latestWindowsInstallerUrlFromYml(baseUrl, latestYml);
+  if (!installerUrl) {
     console.warn(JSON.stringify({ level: "warn", event: "download:latest-yml-missing-installer" }));
     return null;
   }
 
-  return `${baseUrl}/${encodeURI(installerPath).replace(/%2F/g, "/")}`;
+  return installerUrl;
 }
 
-function extractLatestInstallerPath(latestYml: string): string {
+export function latestWindowsInstallerUrlFromYml(baseUrl: string, latestYml: string): string | null {
+  const installerPath = extractLatestInstallerPath(latestYml);
+  if (!installerPath) {
+    return null;
+  }
+
+  const encodedPath = installerPath.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  try {
+    return new URL(encodedPath, `${baseUrl.replace(/\/$/, "")}/`).toString();
+  } catch {
+    return null;
+  }
+}
+
+export function extractLatestInstallerPath(latestYml: string): string {
   const pathMatch = latestYml.match(/^path:\s*["']?([^"'\r\n]+)["']?\s*$/m);
-  if (pathMatch?.[1]?.endsWith(".exe")) {
-    return pathMatch[1].trim();
+  if (pathMatch?.[1]) {
+    const installerPath = normalizeInstallerPath(pathMatch[1]);
+    if (installerPath) {
+      return installerPath;
+    }
   }
 
   const urlMatch = latestYml.match(/^\s*-\s*url:\s*["']?([^"'\r\n]+\.exe)["']?\s*$/m);
-  return urlMatch?.[1]?.trim() || "";
+  return normalizeInstallerPath(urlMatch?.[1] || "");
+}
+
+function normalizeInstallerPath(value: string): string {
+  const installerPath = value.trim();
+  if (!installerPath.toLowerCase().endsWith(".exe")) {
+    return "";
+  }
+
+  if (
+    /^[a-z][a-z0-9+.-]*:/i.test(installerPath) ||
+    installerPath.startsWith("/") ||
+    installerPath.startsWith("\\") ||
+    installerPath.includes("\\") ||
+    installerPath.includes("?") ||
+    installerPath.includes("#")
+  ) {
+    return "";
+  }
+
+  const segments = installerPath.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) {
+    return "";
+  }
+
+  return segments.join("/");
 }
 
 async function safeJson(request: Request): Promise<Record<string, unknown>> {

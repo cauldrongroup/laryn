@@ -7,12 +7,13 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "dev": "pnpm desktop:dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "lint": "pnpm -r lint",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
     "worker:dev": "pnpm --filter @laryn/worker dev",
     "worker:dev:fixed": "pnpm --filter @laryn/worker dev -- --port 8787",
-    "worker:dry-run": "pnpm --filter @laryn/worker exec wrangler deploy --dry-run",
+    "worker:dry-run": "node scripts/worker-dry-run.mjs",
     "worker:deploy": "pnpm --filter @laryn/worker run deploy",
     "worker:versions:upload": "pnpm --filter @laryn/worker run versions:upload",
     "desktop:dev": "pnpm --filter @laryn/desktop dev",
@@ -20,13 +21,20 @@
     "desktop:dev:electron": "pnpm --filter @laryn/desktop dev:electron",
     "desktop:dev:hot": "pnpm --filter @laryn/desktop dev:hot",
     "desktop:build": "pnpm --filter @laryn/desktop build",
-    "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win"
+    "desktop:dist:win": "pnpm --filter @laryn/desktop dist:win",
+    "security:scan": "node scripts/scan-secrets.mjs"
+  },
+  "pnpm": {
+    "overrides": {
+      "@esbuild-kit/core-utils>esbuild": "^0.25.12"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
     "@types/node": "^22.15.21",
     "eslint": "^9.27.0",
-    "typescript-eslint": "^8.48.0",
-    "typescript": "^5.8.3"
+    "turbo": "^2.3.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.48.0"
   }
 }
