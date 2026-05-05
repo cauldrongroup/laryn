@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: desktop-release-${{ inputs.version }}
-  cancel-in-progress: false
+  group: desktop-release
+  cancel-in-progress: true
 
 env:
   LARYN_UPDATE_BASE_URL: ${{ vars.LARYN_UPDATE_BASE_URL }}
@@ -59,9 +59,11 @@ jobs:
 
       - name: Resolve release version
         id: version
+        env:
+          DESKTOP_VERSION_INPUT: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          version="${{ inputs.version }}"
+          version="${DESKTOP_VERSION_INPUT}"
 
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "Version must be semver, received '$version'" >&2
@@ -323,11 +325,6 @@ jobs:
             release-assets/*.dmg
             release-assets/*.zip
             release-assets/*.blockmap
-
-      - name: Install AWS CLI
-        run: |
-          python -m pip install --user awscli
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Publish update feeds to R2
         env:
