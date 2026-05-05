@@ -253,6 +253,28 @@
     cursor: pointer;
   }
 
+  .hotkey-capture {
+    @apply app-no-drag flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm
+      disabled:cursor-not-allowed disabled:opacity-50;
+    min-height: 68px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+  .hotkey-capture:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .hotkey-capture:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--color-brand);
+  }
+  .hotkey-capture[data-capturing="true"] {
+    background: rgba(79, 143, 255, 0.1);
+    box-shadow:
+      inset 0 0 0 1px rgba(79, 143, 255, 0.52),
+      0 0 0 1px rgba(79, 143, 255, 0.08);
+  }
+
   /* ----- Waveform ----- */
   .wave {
     display: flex;
