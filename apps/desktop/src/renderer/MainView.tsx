@@ -981,52 +981,147 @@ function SectionHotkey({
   onSetHotkey: (hotkey: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState(rawHotkey);
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState("");
+  const pendingModifierHotkey = useRef<string | null>(null);
+  const captureButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setDraft(rawHotkey);
+    setCapturing(false);
+    setCaptureError("");
+    pendingModifierHotkey.current = null;
   }, [rawHotkey]);
 
+  const draftDisplay = displayHotkey(draft);
+  const draftParts = splitHotkey(draftDisplay);
   const unchanged = normalizeHotkeyDraft(draft) === normalizeHotkeyDraft(rawHotkey);
+
+  function beginCapture() {
+    if (recordingControlsDisabled) return;
+    pendingModifierHotkey.current = null;
+    setDraft(rawHotkey);
+    setCaptureError("");
+    setCapturing(true);
+    window.requestAnimationFrame(() => captureButtonRef.current?.focus());
+  }
+
+  function cancelCapture() {
+    pendingModifierHotkey.current = null;
+    setDraft(rawHotkey);
+    setCaptureError("");
+    setCapturing(false);
+  }
+
+  async function commitCapture(nextHotkey: string) {
+    pendingModifierHotkey.current = null;
+    setDraft(nextHotkey);
+    setCaptureError("");
+    setCapturing(false);
+    await onSetHotkey(nextHotkey);
+  }
+
+  function handleCaptureKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (!capturing) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (event.key === "Escape" && !hasKeyboardEventModifier(event)) {
+      cancelCapture();
+      return;
+    }
+
+    const captured = hotkeyFromKeyboardEvent(event);
+    if (!captured) {
+      pendingModifierHotkey.current = null;
+      setCaptureError("Press a supported shortcut key.");
+      return;
+    }
+
+    setDraft(captured.hotkey);
+    if (!captured.valid) {
+      pendingModifierHotkey.current = null;
+      setCaptureError(captured.reason);
+      return;
+    }
+
+    setCaptureError("");
+    if (captured.hasKey) {
+      void commitCapture(captured.hotkey);
+      return;
+    }
+
+    pendingModifierHotkey.current = captured.hotkey;
+  }
+
+  function handleCaptureKeyUp(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (!capturing) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextHotkey = pendingModifierHotkey.current;
+    if (nextHotkey && !hasKeyboardEventModifier(event)) {
+      void commitCapture(nextHotkey);
+    }
+  }
+
+  const helperText = captureError || error;
 
   return (
     <section className="grid gap-3">
       <SectionIntro
         title="Hotkey"
-        caption="Enter a hold shortcut with at least one modifier. Modifier-only shortcuts need two modifiers."
+        caption="Choose the hold shortcut used for dictation. Modifier-only shortcuts need two modifiers."
       />
       <div className="grid gap-2">
-        <label className="text-xs font-medium text-[color:var(--color-text-soft)]" htmlFor="hotkey-input">
-          Hold shortcut
-        </label>
-        <input
+        <button
+          ref={captureButtonRef}
           id="hotkey-input"
-          className="form-input"
-          value={draft}
+          className="hotkey-capture"
+          type="button"
+          data-capturing={capturing}
           disabled={recordingControlsDisabled}
-          placeholder="Ctrl+Alt+Space"
-          spellCheck={false}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !unchanged) {
-              void onSetHotkey(draft);
-            }
+          aria-pressed={capturing}
+          aria-describedby={helperText ? "hotkey-helper" : undefined}
+          onBlur={() => {
+            if (capturing) cancelCapture();
           }}
-        />
+          onClick={capturing ? cancelCapture : beginCapture}
+          onKeyDown={handleCaptureKeyDown}
+          onKeyUp={handleCaptureKeyUp}
+        >
+          <KeyRound size={15} className="shrink-0 text-[color:var(--color-brand)]" />
+          <span className="grid min-w-0 flex-1 gap-1 text-left">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-[color:var(--color-text-mute)]">
+              {capturing ? "Press shortcut" : "Hold shortcut"}
+            </span>
+            {draftParts.length > 0 ? (
+              <HotkeyChips parts={draftParts} />
+            ) : (
+              <span className="text-sm font-medium text-[color:var(--color-text-soft)]">
+                Waiting for keys
+              </span>
+            )}
+          </span>
+          <span className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-xs font-semibold text-[color:var(--color-text-soft)]">
+            {capturing ? "Cancel" : unchanged ? "Change" : "Unsaved"}
+          </span>
+        </button>
         <div className="flex items-center justify-between gap-2">
           <small className="truncate text-xs text-[color:var(--color-text-mute)]" title={hotkey}>
             Active: {hotkey}
           </small>
-          <button
-            className="btn btn-secondary px-2.5 py-1.5 text-xs"
-            type="button"
-            disabled={recordingControlsDisabled || unchanged}
-            onClick={() => void onSetHotkey(draft)}
-          >
-            <KeyRound size={13} />
-            Save
-          </button>
+          {capturing ? (
+            <small className="text-xs text-[color:var(--color-brand)]">
+              Listening
+            </small>
+          ) : null}
         </div>
-        {error ? <p className="m-0 text-xs text-[color:var(--color-warn)]">{error}</p> : null}
+        {helperText ? (
+          <p id="hotkey-helper" className="m-0 text-xs text-[color:var(--color-warn)]">
+            {helperText}
+          </p>
+        ) : null}
       </div>
     </section>
   );
@@ -1663,6 +1758,142 @@ function splitHotkey(hotkey: string): string[] {
     .split(/\s+/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+type CapturedHotkey = {
+  hotkey: string;
+  hasKey: boolean;
+  reason: string;
+  valid: boolean;
+};
+
+const MODIFIER_EVENT_CODES = new Set([
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "MetaLeft",
+  "MetaRight"
+]);
+
+const KEYBOARD_CODE_TO_HOTKEY: Record<string, string> = {
+  ...Object.fromEntries("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((key) => [`Key${key}`, key])),
+  ...Object.fromEntries("0123456789".split("").map((key) => [`Digit${key}`, key])),
+  ...Object.fromEntries("0123456789".split("").map((key) => [`Numpad${key}`, `Numpad${key}`])),
+  ...Object.fromEntries(Array.from({ length: 24 }, (_, index) => {
+    const key = `F${index + 1}`;
+    return [key, key];
+  })),
+  Backquote: "Backquote",
+  Backslash: "Backslash",
+  Backspace: "Backspace",
+  BracketLeft: "BracketLeft",
+  BracketRight: "BracketRight",
+  CapsLock: "CapsLock",
+  Comma: "Comma",
+  Delete: "Delete",
+  End: "End",
+  Enter: "Enter",
+  Equal: "Equal",
+  Escape: "Escape",
+  Home: "Home",
+  Insert: "Insert",
+  Minus: "Minus",
+  NumpadAdd: "NumpadAdd",
+  NumpadDecimal: "NumpadDecimal",
+  NumpadDivide: "NumpadDivide",
+  NumpadEnter: "NumpadEnter",
+  NumpadMultiply: "NumpadMultiply",
+  NumpadSubtract: "NumpadSubtract",
+  NumLock: "NumLock",
+  PageDown: "PageDown",
+  PageUp: "PageUp",
+  Period: "Period",
+  PrintScreen: "PrintScreen",
+  Quote: "Quote",
+  ScrollLock: "ScrollLock",
+  Semicolon: "Semicolon",
+  Slash: "Slash",
+  Space: "Space",
+  Tab: "Tab",
+  ArrowDown: "ArrowDown",
+  ArrowLeft: "ArrowLeft",
+  ArrowRight: "ArrowRight",
+  ArrowUp: "ArrowUp"
+};
+
+function hotkeyFromKeyboardEvent(event: React.KeyboardEvent<HTMLElement>): CapturedHotkey | null {
+  const modifiers = keyboardEventModifiers(event);
+  const key = keyboardEventKeyPart(event);
+  const isModifierKey = MODIFIER_EVENT_CODES.has(event.code);
+
+  if (!isModifierKey && !key) {
+    return {
+      hotkey: modifiers.join("+"),
+      hasKey: false,
+      reason: "That key is not supported.",
+      valid: false
+    };
+  }
+
+  const hotkey = [...modifiers, key].filter(Boolean).join("+");
+  if (!hotkey) return null;
+
+  const hasKey = Boolean(key);
+  if (modifiers.length === 0) {
+    return {
+      hotkey,
+      hasKey,
+      reason: "Add Ctrl, Alt, Shift, or Win.",
+      valid: false
+    };
+  }
+
+  if (!hasKey && modifiers.length < 2) {
+    return {
+      hotkey,
+      hasKey,
+      reason: "Modifier-only shortcuts need two modifiers.",
+      valid: false
+    };
+  }
+
+  return {
+    hotkey,
+    hasKey,
+    reason: "",
+    valid: true
+  };
+}
+
+function keyboardEventModifiers(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): string[] {
+  return [
+    event.ctrlKey ? "Control" : "",
+    event.altKey ? "Alt" : "",
+    event.shiftKey ? "Shift" : "",
+    event.metaKey ? "Super" : ""
+  ].filter(Boolean);
+}
+
+function keyboardEventKeyPart(event: React.KeyboardEvent<HTMLElement>): string {
+  if (MODIFIER_EVENT_CODES.has(event.code)) return "";
+  return KEYBOARD_CODE_TO_HOTKEY[event.code] || "";
+}
+
+function hasKeyboardEventModifier(event: {
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  return event.ctrlKey || event.altKey || event.shiftKey || event.metaKey;
 }
 
 function normalizeHotkeyDraft(hotkey: string): string {

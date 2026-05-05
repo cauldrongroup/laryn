@@ -2559,56 +2559,117 @@ function pricingBody(appUrl: string): string {
 }
 
 function downloadBody(appUrl: string): string {
+  const windowsHref = `${appUrl}/downloads/laryn-windows-latest.exe`;
+  const macHref = `${appUrl}/downloads/laryn-mac-latest.dmg`;
   return `
-    <section class="hero hero-compact">
+    <section class="hero hero-download">
       <div class="hero-bg" aria-hidden="true"></div>
-      <div class="page-shell hero-shell-centered">
-        <p class="eyebrow"><span class="eyebrow-dot"></span>Download</p>
-        <h1>Get Laryn for your desktop.</h1>
-        <p class="lede">Install the latest release, sign in once, and start dictating into the app that already has your cursor.</p>
+      <div class="page-shell hero-shell hero-shell-download">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Latest stable build</p>
+          <h1>Install <span class="hero-accent">Laryn</span><br />in under a minute.</h1>
+          <p class="lede">Download the desktop app, sign in once with Google, and Laryn becomes your hold-to-talk dictation in every window you have open.</p>
+          <div class="hero-actions hero-actions-download">
+            <a class="btn btn-primary btn-lg" href="${windowsHref}">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M0 2.6 6.5 1.7v6.2H0Zm0 10.8v-5.4h6.5v6.3Zm7.3-12L16 0v7.5H7.3Zm0 14.6V8.7H16V16Z"/></svg>
+              Download for Windows
+            </a>
+            <a class="btn btn-secondary btn-lg" href="${macHref}">
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M11.182.008C11.148-.03 9.923.023 8.857 1.18 7.792 2.337 7.956 3.66 7.978 3.694c.022.036 1.514.094 2.484-1.231.97-1.326.74-2.42.72-2.456ZM14.39 11.793a4.04 4.04 0 0 1-.404.732 7.41 7.41 0 0 1-.961 1.293 1.93 1.93 0 0 1-1.234.539 3.072 3.072 0 0 1-1.14-.273 3.279 3.279 0 0 0-1.227-.27 3.39 3.39 0 0 0-1.262.27c-.402.165-.78.255-1.142.265-.51.022-.926-.16-1.243-.534-.213-.21-.531-.604-.954-1.18-.453-.617-.825-1.331-1.117-2.144C2.39 9.74 2.234 8.911 2.234 8.117c0-.913.197-1.7.591-2.357.31-.527.722-.943 1.236-1.247a3.32 3.32 0 0 1 1.671-.471c.354 0 .817.11 1.395.323.575.213.945.323 1.107.323.121 0 .532-.13 1.231-.388a4.06 4.06 0 0 1 1.677-.297 3.486 3.486 0 0 1 2.737 1.444 3.046 3.046 0 0 0-1.615 2.766c.013 1.087.404 1.99 1.171 2.706.348.328.737.582 1.171.762-.094.273-.193.535-.299.785Z"/></svg>
+              Download for macOS
+            </a>
+          </div>
+          <ul class="hero-meta" role="list">
+            <li><span class="hero-meta-dot dot-good"></span>Code-signed &amp; auto-updating</li>
+            <li><span class="hero-meta-dot dot-good"></span>Pair unlimited computers per account</li>
+            <li><span class="hero-meta-dot dot-good"></span>Free to install · Pro to dictate</li>
+          </ul>
+        </div>
+        <aside class="hero-installer" aria-hidden="true">
+          <div class="installer-card">
+            <div class="installer-head">
+              <span class="installer-icon">
+                <svg viewBox="0 0 32 32" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9 16 4l11 5-11 5Z"/><path d="M5 9v14l11 5"/><path d="M27 9v14l-11 5"/><path d="m10.5 6.5 11 5"/></svg>
+              </span>
+              <div class="installer-title">
+                <strong>laryn-setup.exe</strong>
+                <span>Windows installer · x64 · ready to run</span>
+              </div>
+              <span class="installer-status">
+                <svg width="11" height="11" viewBox="0 0 16 16"><path fill="currentColor" d="M13.78 5.22a.75.75 0 0 1 0 1.06l-6 6a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06L7.25 10.69l5.47-5.47a.75.75 0 0 1 1.06 0Z"/></svg>
+                Verified
+              </span>
+            </div>
+            <dl class="installer-facts">
+              <div><dt>Channel</dt><dd>Stable</dd></div>
+              <div><dt>Updates</dt><dd>Background, on launch</dd></div>
+              <div><dt>Signed by</dt><dd>Laryn Inc.</dd></div>
+              <div><dt>Account</dt><dd>Free to install</dd></div>
+            </dl>
+            <div class="installer-progress">
+              <div class="installer-progress-track"><span class="installer-progress-bar"></span></div>
+              <span class="installer-progress-label"><span class="dot dot-good"></span>Ready · click to run</span>
+            </div>
+          </div>
+          <div class="installer-glow"></div>
+        </aside>
       </div>
     </section>
 
-    <section class="section section-download-options">
-      <div class="page-shell download-options">
-        <article class="download-card download-card-primary">
-          <div class="download-card-head">
-            <span class="badge badge-brand">Recommended</span>
-            <span class="download-platform">Windows</span>
+    <section class="section section-platforms">
+      <div class="page-shell section-head-row">
+        <div>
+          <p class="eyebrow"><span class="eyebrow-dot"></span>Platforms</p>
+          <h2>Pick the build for your machine.</h2>
+          <p class="section-lede">Both builds connect to the same Laryn account. Pair as many computers as you like — there is no per-seat fee.</p>
+        </div>
+      </div>
+      <div class="page-shell platforms-grid">
+        <article class="platform-card platform-card-primary">
+          <div class="platform-card-head">
+            <span class="platform-glyph platform-glyph-windows" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 16 16"><path fill="currentColor" d="M0 2.6 6.5 1.7v6.2H0Zm0 10.8v-5.4h6.5v6.3Zm7.3-12L16 0v7.5H7.3Zm0 14.6V8.7H16V16Z"/></svg>
+            </span>
+            <div class="platform-card-title">
+              <span class="badge badge-brand">Recommended</span>
+              <h3>Windows</h3>
+            </div>
           </div>
-          <h2>Windows installer</h2>
-          <p>Best-supported release path. Installs Laryn, creates shortcuts, and keeps background updates wired to the Windows update feed.</p>
-          <dl class="download-facts">
+          <p>Best-supported release. Ships as a signed installer, drops shortcuts, and stays current via the Windows update feed.</p>
+          <dl class="platform-facts">
             <div><dt>OS</dt><dd>Windows 10 1903+ or Windows 11</dd></div>
             <div><dt>Arch</dt><dd>x64</dd></div>
-            <div><dt>File</dt><dd>.exe installer</dd></div>
+            <div><dt>Format</dt><dd>.exe installer</dd></div>
           </dl>
-          <a class="btn btn-primary btn-lg btn-block" href="${appUrl}/downloads/laryn-windows-latest.exe">Download for Windows</a>
+          <a class="btn btn-primary btn-lg btn-block" href="${windowsHref}">Download for Windows</a>
+          <p class="platform-foot"><span class="dot dot-good"></span>Updates install silently in the background.</p>
         </article>
-        <article class="download-card">
-          <div class="download-card-head">
-            <span class="badge badge-warn">Early build</span>
-            <span class="download-platform">macOS</span>
+        <article class="platform-card">
+          <div class="platform-card-head">
+            <span class="platform-glyph platform-glyph-mac" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 16 16"><path fill="currentColor" d="M11.182.008C11.148-.03 9.923.023 8.857 1.18 7.792 2.337 7.956 3.66 7.978 3.694c.022.036 1.514.094 2.484-1.231.97-1.326.74-2.42.72-2.456ZM14.39 11.793a4.04 4.04 0 0 1-.404.732 7.41 7.41 0 0 1-.961 1.293 1.93 1.93 0 0 1-1.234.539 3.072 3.072 0 0 1-1.14-.273 3.279 3.279 0 0 0-1.227-.27 3.39 3.39 0 0 0-1.262.27c-.402.165-.78.255-1.142.265-.51.022-.926-.16-1.243-.534-.213-.21-.531-.604-.954-1.18-.453-.617-.825-1.331-1.117-2.144C2.39 9.74 2.234 8.911 2.234 8.117c0-.913.197-1.7.591-2.357.31-.527.722-.943 1.236-1.247a3.32 3.32 0 0 1 1.671-.471c.354 0 .817.11 1.395.323.575.213.945.323 1.107.323.121 0 .532-.13 1.231-.388a4.06 4.06 0 0 1 1.677-.297 3.486 3.486 0 0 1 2.737 1.444 3.046 3.046 0 0 0-1.615 2.766c.013 1.087.404 1.99 1.171 2.706.348.328.737.582 1.171.762-.094.273-.193.535-.299.785Z"/></svg>
+            </span>
+            <div class="platform-card-title">
+              <span class="badge badge-warn">Early build</span>
+              <h3>macOS</h3>
+            </div>
           </div>
-          <h2>Mac disk image</h2>
-          <p>Apple Silicon build for testing. It is not notarized yet, so macOS may require approval in Privacy &amp; Security the first time you open it.</p>
-          <dl class="download-facts">
+          <p>Apple Silicon disk image for testers. Not notarized yet, so macOS may ask you to approve it once in Privacy &amp; Security.</p>
+          <dl class="platform-facts">
             <div><dt>OS</dt><dd>macOS 12+</dd></div>
             <div><dt>Arch</dt><dd>Apple Silicon</dd></div>
-            <div><dt>File</dt><dd>.dmg disk image</dd></div>
+            <div><dt>Format</dt><dd>.dmg disk image</dd></div>
           </dl>
-          <a class="btn btn-secondary btn-lg btn-block" href="${appUrl}/downloads/laryn-mac-latest.dmg">Download for macOS</a>
+          <a class="btn btn-secondary btn-lg btn-block" href="${macHref}">Download for macOS</a>
+          <p class="platform-foot"><span class="dot dot-warn"></span>Drag Laryn into Applications, then launch.</p>
         </article>
-      </div>
-      <div class="page-shell">
-        <p class="download-meta">Download links always redirect to the latest published build.</p>
       </div>
     </section>
 
     <section class="section section-flow">
       <div class="page-shell section-head">
         <p class="eyebrow"><span class="eyebrow-dot"></span>Setup</p>
-        <h2>From zero to dictating in three steps.</h2>
+        <h2>Three steps from installer to first transcript.</h2>
       </div>
       <ol class="flow" role="list">
         <li class="flow-step">
@@ -2619,41 +2680,32 @@ function downloadBody(appUrl: string): string {
         <li class="flow-step">
           <div class="flow-step-num">02</div>
           <h3>Sign in &amp; pair</h3>
-          <p>Open Settings → Account → Sign in with Google. Approve the short code in your browser and you're paired.</p>
+          <p>Open Settings → Account, sign in with Google, and approve the short code that lands in your browser.</p>
         </li>
         <li class="flow-step">
           <div class="flow-step-num">03</div>
           <h3>Press, speak, paste</h3>
-          <p>Hold <kbd>Ctrl</kbd>+<kbd>Win</kbd>, talk, release. Laryn pastes into whatever window had focus.</p>
+          <p>Hold <kbd>Ctrl</kbd>+<kbd>Win</kbd>, talk, release. Laryn pastes clean text into whatever window had focus.</p>
         </li>
       </ol>
     </section>
 
-    <section class="section section-specs">
-      <div class="page-shell specs-grid">
-        <article class="spec-card">
-          <p class="eyebrow"><span class="eyebrow-dot"></span>System</p>
-          <h3>Requirements</h3>
-          <dl class="spec-list">
-            <div class="spec-row"><dt>Windows</dt><dd>Windows 10 1903+ or Windows 11, x64</dd></div>
-            <div class="spec-row"><dt>macOS</dt><dd>macOS 12+ on Apple Silicon</dd></div>
-            <div class="spec-row"><dt>RAM</dt><dd>4 GB minimum, 8 GB recommended</dd></div>
-            <div class="spec-row"><dt>Disk</dt><dd>Several hundred MB after install</dd></div>
-            <div class="spec-row"><dt>Mic</dt><dd>Any system-recognized microphone</dd></div>
-            <div class="spec-row"><dt>Network</dt><dd>Internet for transcription</dd></div>
-          </dl>
-        </article>
-        <article class="spec-card spec-card-hotkey">
-          <p class="eyebrow"><span class="eyebrow-dot"></span>Hotkey</p>
-          <h3>Hold-to-talk shortcut</h3>
-          <div class="hotkey-display">
-            <kbd class="kbd-lg">Ctrl</kbd>
-            <span class="hotkey-plus">+</span>
-            <kbd class="kbd-lg">Super</kbd>
+    <section class="section section-requirements">
+      <div class="page-shell">
+        <div class="requirements-bar">
+          <div class="requirements-head">
+            <p class="eyebrow"><span class="eyebrow-dot"></span>Requirements</p>
+            <h2>Light footprint, no surprises.</h2>
           </div>
-          <p>The default shortcut. On Windows this is <kbd>Ctrl</kbd>+<kbd>Win</kbd>; on macOS this maps to the system modifier Laryn can register globally.</p>
-          <p class="muted">Pick any combination you like — change it any time from Settings → Hotkey.</p>
-        </article>
+          <ul class="requirements-list" role="list">
+            <li><span class="req-label">RAM</span><span class="req-value">4&nbsp;GB minimum, 8&nbsp;GB recommended</span></li>
+            <li><span class="req-label">Disk</span><span class="req-value">A few hundred MB after install</span></li>
+            <li><span class="req-label">Microphone</span><span class="req-value">Any system-recognized mic, USB or built-in</span></li>
+            <li><span class="req-label">Network</span><span class="req-value">Internet connection for transcription</span></li>
+            <li><span class="req-label">Hotkey</span><span class="req-value"><kbd>Ctrl</kbd>+<kbd>Win</kbd> by default — change in Settings</span></li>
+            <li><span class="req-label">Account</span><span class="req-value">Free Laryn account, Pro to dictate</span></li>
+          </ul>
+        </div>
       </div>
     </section>
 
@@ -2663,10 +2715,10 @@ function downloadBody(appUrl: string): string {
           <div class="cta-glyph" aria-hidden="true"><span class="cta-glyph-mic"></span></div>
           <div class="cta-copy">
             <h2>Already installed?</h2>
-            <p>Open the desktop app, head to Settings → Account, and sign in to start dictating.</p>
+            <p>Open the desktop app, head to Settings → Account, and sign in to pair this computer in seconds.</p>
           </div>
           <div class="cta-actions">
-            <a class="btn btn-primary btn-lg" href="${appUrl}/app">Open account</a>
+            <a class="btn btn-primary btn-lg" href="${appUrl}/app">Open dashboard</a>
             <a class="link-action" href="/pricing"><span>See pricing</span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 1 1-1.06-1.06L11.19 8.5H2.75a.75.75 0 0 1 0-1.5h8.44L9.22 5.28a.75.75 0 0 1 0-1.06Z"/></svg></a>
           </div>
         </div>
@@ -2849,21 +2901,66 @@ function marketingCss(): string {
 .hero-meta li{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-soft)}
 .hero-meta-dot{width:7px;height:7px;border-radius:999px;background:var(--text-mute);flex:0 0 auto}
 .dot-good.hero-meta-dot,.hero-meta-dot.dot-good{background:var(--good);box-shadow:0 0 12px rgba(52,211,153,.5)}
-.download-meta{margin-top:18px;color:var(--text-mute);font-size:13px;text-align:center}
 
-/* ---------- Download choices ---------- */
-.section-download-options{padding-top:0}
-.download-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-bottom:18px}
-.download-card{padding:30px;border-radius:var(--radius-lg);background:linear-gradient(180deg,rgba(22,34,58,.62),rgba(13,22,34,.78));box-shadow:inset 0 0 0 1px var(--line-strong);display:flex;flex-direction:column;gap:16px}
-.download-card-primary{box-shadow:inset 0 0 0 1px rgba(79,143,255,.36),0 24px 70px -42px rgba(47,111,255,.55)}
-.download-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.download-platform{font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mute)}
-.download-card h2{font-size:28px;line-height:1.1;font-weight:600;letter-spacing:-0.018em;color:var(--text)}
-.download-card p{font-size:15px;line-height:1.55;color:var(--text-soft)}
-.download-facts{display:grid;gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line);margin:4px 0 6px}
-.download-facts div{display:grid;grid-template-columns:86px 1fr;gap:12px;background:rgba(255,255,255,.025);padding:11px 13px}
-.download-facts dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:700}
-.download-facts dd{font-size:13px;color:var(--text);min-width:0}
+/* ---------- Download hero ---------- */
+.hero-download{padding:88px 0 72px}
+.hero-shell-download{grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:56px;align-items:center}
+.hero-shell-download h1{font-size:clamp(40px,5.6vw,64px);line-height:1.04;max-width:16ch}
+.hero-actions-download{gap:14px}
+.hero-actions-download .btn svg{flex:0 0 auto;opacity:.92}
+
+.hero-installer{position:relative;display:grid;align-items:center;justify-items:end;min-width:0}
+.installer-card{position:relative;width:100%;max-width:520px;border-radius:18px;padding:22px;display:grid;gap:18px;background:linear-gradient(180deg,rgba(19,30,48,.96),rgba(8,14,25,.98));box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 1px 0 rgba(255,255,255,.06),0 36px 90px -28px rgba(0,0,0,.74);z-index:1;overflow:hidden}
+.installer-card::before{content:"";position:absolute;inset:0;background:radial-gradient(520px 240px at 88% 0%,rgba(79,143,255,.18),transparent 62%);pointer-events:none}
+.installer-head{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px}
+.installer-icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;color:#cdd9ff;background:linear-gradient(180deg,rgba(79,143,255,.22),rgba(30,78,216,.18));box-shadow:inset 0 0 0 1px rgba(79,143,255,.34),0 0 24px rgba(47,111,255,.32)}
+.installer-title{display:grid;gap:3px;min-width:0}
+.installer-title strong{font-size:15px;font-weight:650;color:#fff;font-family:ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.installer-title span{font-size:12px;color:var(--text-mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.installer-status{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--good);background:rgba(52,211,153,.12);box-shadow:inset 0 0 0 1px rgba(52,211,153,.32)}
+.installer-status svg{flex:0 0 auto}
+.installer-facts{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line)}
+.installer-facts div{display:grid;gap:2px;padding:11px 13px;background:rgba(255,255,255,.025);min-width:0}
+.installer-facts dt{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:700}
+.installer-facts dd{font-size:13px;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.installer-progress{position:relative;display:grid;gap:8px}
+.installer-progress-track{height:6px;border-radius:999px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.installer-progress-bar{display:block;height:100%;width:100%;border-radius:inherit;background:linear-gradient(90deg,var(--brand) 0%,var(--accent) 100%);box-shadow:0 0 18px rgba(47,111,255,.45)}
+.installer-progress-label{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text-soft)}
+.installer-glow{position:absolute;inset:auto -18% -36px auto;width:75%;height:60%;background:radial-gradient(closest-side,rgba(79,143,255,.32),transparent 70%);filter:blur(34px);z-index:0;pointer-events:none}
+
+/* ---------- Platform cards ---------- */
+.section-platforms{padding-top:0}
+.platforms-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
+.platform-card{position:relative;padding:30px;border-radius:var(--radius-lg);background:linear-gradient(180deg,rgba(22,34,58,.55),rgba(13,22,34,.7));box-shadow:inset 0 0 0 1px var(--line-strong);display:grid;gap:16px;align-content:start}
+.platform-card-primary{background:linear-gradient(180deg,rgba(28,48,86,.7),rgba(13,22,34,.85));box-shadow:inset 0 0 0 1px rgba(79,143,255,.4),0 24px 70px -42px rgba(47,111,255,.55)}
+.platform-card-primary::before{content:"";position:absolute;inset:0;border-radius:inherit;background:radial-gradient(closest-side at 100% 0%,rgba(79,143,255,.18),transparent 70%);pointer-events:none}
+.platform-card > *{position:relative;z-index:1}
+.platform-card-head{display:flex;align-items:center;gap:14px}
+.platform-glyph{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;flex:0 0 auto;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px var(--line-strong);color:var(--text)}
+.platform-glyph-windows{color:#9bc1ff;background:linear-gradient(180deg,rgba(79,143,255,.22),rgba(30,78,216,.16));box-shadow:inset 0 0 0 1px rgba(79,143,255,.34)}
+.platform-glyph-mac{color:var(--text-soft);background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px var(--line-bright)}
+.platform-card-title{display:grid;gap:6px;min-width:0}
+.platform-card-title h3{font-size:24px;font-weight:600;letter-spacing:-0.016em;color:var(--text);line-height:1}
+.platform-card-title .badge{justify-self:start}
+.platform-card p{font-size:15px;line-height:1.55;color:var(--text-soft);max-width:46ch}
+.platform-facts{display:grid;gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line);margin:2px 0 6px}
+.platform-facts div{display:grid;grid-template-columns:86px 1fr;gap:12px;background:rgba(255,255,255,.025);padding:11px 14px}
+.platform-facts dt{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:700}
+.platform-facts dd{font-size:13px;color:var(--text);min-width:0}
+.platform-foot{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text-mute);margin-top:2px}
+.platform-foot .dot{width:6px;height:6px}
+
+/* ---------- Requirements bar ---------- */
+.section-requirements{padding-top:0}
+.requirements-bar{padding:36px clamp(24px,4vw,48px);border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong);display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:36px;align-items:start}
+.requirements-head{display:grid;gap:10px;max-width:280px}
+.requirements-head h2{font-size:clamp(22px,2.6vw,28px);font-weight:600;letter-spacing:-0.016em;color:var(--text);line-height:1.15}
+.requirements-list{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border-radius:var(--radius-md);overflow:hidden;box-shadow:inset 0 0 0 1px var(--line)}
+.requirements-list li{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:start;padding:14px 16px;background:var(--surface-soft)}
+.req-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;color:var(--text-mute);padding-top:2px}
+.req-value{font-size:14px;line-height:1.5;color:var(--text)}
+.req-value kbd{font-size:11px;padding:2px 6px}
 
 /* ---------- Hero preview ---------- */
 .hero-preview{position:relative;display:grid;align-items:center;justify-items:end;min-width:0;padding-bottom:54px}
@@ -2999,21 +3096,6 @@ function marketingCss(): string {
 .faq-item[open] summary::after{transform:rotate(45deg);color:var(--brand)}
 .faq-item p{padding:0 20px 18px;color:var(--text-soft);font-size:15px;line-height:1.55;max-width:68ch}
 
-/* ---------- Download specs ---------- */
-.section-specs{padding-top:0}
-.specs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
-.spec-card{padding:32px;border-radius:var(--radius-lg);background:var(--surface);box-shadow:inset 0 0 0 1px var(--line-strong);display:grid;gap:14px;align-content:start}
-.spec-card h3{font-size:22px;font-weight:600;letter-spacing:-0.014em;color:var(--text)}
-.spec-list{display:grid;gap:1px;border-radius:var(--radius-md);overflow:hidden;background:var(--line);margin-top:4px}
-.spec-row{background:var(--surface-soft);display:grid;grid-template-columns:140px 1fr;gap:16px;padding:12px 16px;align-items:center}
-.spec-row dt{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-mute);font-weight:600}
-.spec-row dd{font-size:14px;color:var(--text)}
-.spec-card-hotkey{background:linear-gradient(180deg,rgba(22,34,58,.7),rgba(13,22,34,.8));align-items:start}
-.hotkey-display{display:flex;align-items:center;gap:14px;padding:20px;justify-content:center;background:rgba(255,255,255,.025);border-radius:var(--radius-md);box-shadow:inset 0 0 0 1px var(--line);margin-top:4px}
-.kbd-lg{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;font-weight:600;padding:12px 18px;border-radius:10px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px var(--line-bright),inset 0 -2px 0 rgba(0,0,0,.32);color:#fff;letter-spacing:.04em}
-.hotkey-plus{font-size:18px;color:var(--text-mute);font-weight:300}
-.spec-card-hotkey p{font-size:14px;line-height:1.55;color:var(--text-soft)}
-
 /* ---------- CTA ---------- */
 .section-cta{padding-top:32px;padding-bottom:64px}
 .cta-band{position:relative;padding:48px clamp(28px,4.5vw,56px);border-radius:var(--radius-xl);background:linear-gradient(135deg,rgba(79,143,255,.22) 0%,rgba(34,211,238,.16) 50%,rgba(167,139,250,.18) 100%);box-shadow:inset 0 0 0 1px var(--line-bright);display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:32px;overflow:hidden}
@@ -3040,15 +3122,18 @@ function marketingCss(): string {
 
 /* ---------- Responsive ---------- */
 @media(max-width:1080px){
-  .hero-shell{grid-template-columns:1fr;gap:48px}
-  .hero-preview{justify-items:start}
+  .hero-shell,.hero-shell-download{grid-template-columns:1fr;gap:48px}
+  .hero-preview,.hero-installer{justify-items:start}
+  .installer-card{max-width:560px}
   .pricing-teaser{grid-template-columns:1fr;gap:32px}
   .pricing-grid{grid-template-columns:1fr}
+  .requirements-bar{grid-template-columns:1fr;gap:28px}
 }
 @media(max-width:860px){
   .site-nav{display:none}
   .flow,.case-grid,.why-grid{grid-template-columns:1fr}
-  .download-options,.specs-grid,.faq-grid{grid-template-columns:1fr}
+  .platforms-grid,.faq-grid{grid-template-columns:1fr}
+  .requirements-list{grid-template-columns:1fr}
   .footer-cols{grid-template-columns:repeat(2,minmax(0,1fr))}
   .site-footer-inner{grid-template-columns:1fr;gap:32px}
   .cta-band{grid-template-columns:1fr;gap:24px;text-align:left}
@@ -3078,6 +3163,13 @@ function marketingCss(): string {
   .preview-overlay-wave{display:none}
   .case-card{padding:18px}
   .pricing-card{padding:24px}
+  .platform-card{padding:24px}
+  .platform-facts div{grid-template-columns:74px 1fr}
+  .installer-card{padding:18px;gap:14px}
+  .installer-facts{grid-template-columns:1fr}
+  .requirements-bar{padding:24px}
+  .requirements-list li{grid-template-columns:1fr;gap:4px;padding:12px 14px}
+  .req-label{padding-top:0}
   .footer-cols{grid-template-columns:1fr}
   .compare-row{grid-template-columns:1fr;gap:4px}
   .pricing-price-num{font-size:40px}

@@ -1640,11 +1640,13 @@ function resetHotkeyState() {
 const HOTKEY_KEY_CODES = {
   ...Object.fromEntries("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((key) => [key, UiohookKey[key]])),
   ...Object.fromEntries("0123456789".split("").map((key) => [key, UiohookKey[key]])),
+  ...Object.fromEntries(Array.from({ length: 10 }, (_, index) => [`Numpad${index}`, UiohookKey[`Numpad${index}`]])),
   Space: UiohookKey.Space,
   Enter: UiohookKey.Enter,
   Escape: UiohookKey.Escape,
   Tab: UiohookKey.Tab,
   Backspace: UiohookKey.Backspace,
+  CapsLock: UiohookKey.CapsLock,
   Delete: UiohookKey.Delete,
   Insert: UiohookKey.Insert,
   Home: UiohookKey.Home,
@@ -1666,6 +1668,12 @@ const HOTKEY_KEY_CODES = {
   Backquote: UiohookKey.Backquote,
   BracketLeft: UiohookKey.BracketLeft,
   BracketRight: UiohookKey.BracketRight,
+  NumpadMultiply: UiohookKey.NumpadMultiply,
+  NumpadAdd: UiohookKey.NumpadAdd,
+  NumpadSubtract: UiohookKey.NumpadSubtract,
+  NumpadDecimal: UiohookKey.NumpadDecimal,
+  NumpadDivide: UiohookKey.NumpadDivide,
+  NumpadEnter: UiohookKey.NumpadEnter,
   F1: UiohookKey.F1,
   F2: UiohookKey.F2,
   F3: UiohookKey.F3,
@@ -1677,8 +1685,25 @@ const HOTKEY_KEY_CODES = {
   F9: UiohookKey.F9,
   F10: UiohookKey.F10,
   F11: UiohookKey.F11,
-  F12: UiohookKey.F12
+  F12: UiohookKey.F12,
+  F13: UiohookKey.F13,
+  F14: UiohookKey.F14,
+  F15: UiohookKey.F15,
+  F16: UiohookKey.F16,
+  F17: UiohookKey.F17,
+  F18: UiohookKey.F18,
+  F19: UiohookKey.F19,
+  F20: UiohookKey.F20,
+  F21: UiohookKey.F21,
+  F22: UiohookKey.F22,
+  F23: UiohookKey.F23,
+  F24: UiohookKey.F24,
+  NumLock: UiohookKey.NumLock,
+  ScrollLock: UiohookKey.ScrollLock,
+  PrintScreen: UiohookKey.PrintScreen
 };
+
+const HOTKEY_CANONICAL_PARTS = Object.fromEntries(Object.keys(HOTKEY_KEY_CODES).map((key) => [key.toUpperCase(), key]));
 
 const HOTKEY_ALIASES = {
   CTRL: "Control",
@@ -1771,7 +1796,7 @@ function parseHotkey(value) {
 
 function normalizeHotkeyPart(part) {
   const upper = part.replace(/\s+/g, "").toUpperCase();
-  if (/^F([1-9]|1[0-2])$/.test(upper)) return upper;
+  if (HOTKEY_CANONICAL_PARTS[upper]) return HOTKEY_CANONICAL_PARTS[upper];
   if (/^[A-Z0-9]$/.test(upper)) return upper;
   return HOTKEY_ALIASES[upper] || "";
 }
