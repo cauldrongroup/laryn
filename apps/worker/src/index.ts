@@ -203,6 +203,7 @@ const CLEANUP_USER_PROMPT_SUFFIX = `
 </transcript>`;
 
 const app = new Hono<{ Bindings: Env }>();
+const DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS = 1_500;
 
 app.use(
   "/health/*",
@@ -972,7 +973,7 @@ async function authorizeDesktop(
   }
 
   const billing = options.liveBilling
-    ? await getBilling(env, device.user_id)
+    ? await getDesktopAuthLiveBilling(env, device.user_id)
     : await getCachedBilling(env, device.user_id);
 
   return {
@@ -981,6 +982,27 @@ async function authorizeDesktop(
     deviceName: device.device_name,
     billing
   };
+}
+
+async function getDesktopAuthLiveBilling(env: Env, userId: string): Promise<AccountBillingStatus> {
+  try {
+    return await withTimeout(
+      getBilling(env, userId),
+      DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS,
+      `desktop auth billing timed out after ${DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS}ms`
+    );
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: "warn",
+        event: "desktop-auth:live-billing-fallback",
+        userId,
+        timeoutMs: DESKTOP_AUTH_LIVE_BILLING_TIMEOUT_MS,
+        error: formatError(error)
+      })
+    );
+    return getCachedBilling(env, userId);
+  }
 }
 
 async function getBilling(env: Env, userId: string): Promise<AccountBillingStatus> {

@@ -57,6 +57,7 @@ const MAX_DICTIONARY_PHRASE_LENGTH = 60;
 const MAX_DICTIONARY_REPLACEMENT_LENGTH = 120;
 const WORKER_AUTH_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const POST_TRANSCRIPTION_USAGE_REFRESH_DELAYS_MS = [5_000, 20_000, 60_000];
+const DEFERRED_USAGE_REFRESH_RETRY_MS = 5_000;
 
 const hotkeyState = {
   ctrlDown: false,
@@ -607,7 +608,7 @@ async function refreshWorkerAuthFromPoll(reason) {
     return;
   }
 
-  if (status.state === "recording" || status.state === "transcribing" || status.state === "pasting") {
+  if (isDictationBusy()) {
     return;
   }
 
@@ -626,12 +627,7 @@ function scheduleUsageCreditRefresh(reason) {
   clearUsageCreditRefreshTimers();
 
   for (const delayMs of POST_TRANSCRIPTION_USAGE_REFRESH_DELAYS_MS) {
-    const timer = setTimeout(() => {
-      usageCreditRefreshTimers = usageCreditRefreshTimers.filter((candidate) => candidate !== timer);
-      void refreshWorkerAuthFromPoll(reason);
-    }, delayMs);
-    timer.unref?.();
-    usageCreditRefreshTimers.push(timer);
+    scheduleUsageCreditRefreshAttempt(reason, delayMs);
   }
 }
 
@@ -640,6 +636,29 @@ function clearUsageCreditRefreshTimers() {
     clearTimeout(timer);
   }
   usageCreditRefreshTimers = [];
+}
+
+function scheduleUsageCreditRefreshAttempt(reason, delayMs) {
+  const timer = setTimeout(() => {
+    usageCreditRefreshTimers = usageCreditRefreshTimers.filter((candidate) => candidate !== timer);
+
+    if (!desktopAuth.token) {
+      return;
+    }
+
+    if (workerAuthPollInFlight || isDictationBusy()) {
+      scheduleUsageCreditRefreshAttempt(reason, DEFERRED_USAGE_REFRESH_RETRY_MS);
+      return;
+    }
+
+    void refreshWorkerAuthFromPoll(reason);
+  }, delayMs);
+  timer.unref?.();
+  usageCreditRefreshTimers.push(timer);
+}
+
+function isDictationBusy() {
+  return status.state === "recording" || status.state === "transcribing" || status.state === "pasting";
 }
 
 function configureAutoUpdates() {
