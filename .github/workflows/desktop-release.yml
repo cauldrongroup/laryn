@@ -64,8 +64,9 @@ jobs:
         run: |
           set -euo pipefail
           version="${DESKTOP_VERSION_INPUT}"
+          semver_pattern='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
 
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+          if [[ ! "$version" =~ $semver_pattern ]]; then
             echo "Version must be semver, received '$version'" >&2
             exit 1
           fi
@@ -340,8 +341,7 @@ jobs:
             name="$(basename "$file")"
             case "$name" in
               latest.yml|latest-mac.yml)
-                content_type="text/yaml"
-                cache_control="no-cache"
+                continue
                 ;;
               *.dmg)
                 content_type="application/x-apple-diskimage"
@@ -364,6 +364,13 @@ jobs:
               --endpoint-url "$endpoint" \
               --content-type "$content_type" \
               --cache-control "$cache_control"
+          done
+
+          for feed in latest.yml latest-mac.yml; do
+            aws s3 cp "release-assets/$feed" "s3://$LARYN_R2_BUCKET/$feed" \
+              --endpoint-url "$endpoint" \
+              --content-type "text/yaml" \
+              --cache-control "no-cache"
           done
 
       - name: Verify public update feeds
