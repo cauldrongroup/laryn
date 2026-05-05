@@ -39,6 +39,9 @@ let activeHotkeyBinding = null;
 let updateCheckPromise = null;
 let updateReadyToInstall = false;
 let updateInstallRequested = false;
+let workerAuthPollTimer = null;
+let workerAuthPollInFlight = false;
+let usageCreditRefreshTimers = [];
 let desktopAuth = {
   token: "",
   account: null,
@@ -52,6 +55,8 @@ const MAX_DICTIONARY_ENTRIES = 1000;
 const MAX_DICTIONARY_SEND_ENTRIES = 200;
 const MAX_DICTIONARY_PHRASE_LENGTH = 60;
 const MAX_DICTIONARY_REPLACEMENT_LENGTH = 120;
+const WORKER_AUTH_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const POST_TRANSCRIPTION_USAGE_REFRESH_DELAYS_MS = [5_000, 20_000, 60_000];
 
 const hotkeyState = {
   ctrlDown: false,
@@ -131,6 +136,7 @@ if (!singleInstanceLock) {
     createTray();
     registerNativeHotkey();
     configureAutoUpdates();
+    configureWorkerAuthPolling();
     void refreshWorkerAuth();
   });
 }
@@ -161,6 +167,11 @@ app.on("will-quit", () => {
   }
   logSink?.close();
   logSink = null;
+  clearUsageCreditRefreshTimers();
+  if (workerAuthPollTimer) {
+    clearInterval(workerAuthPollTimer);
+    workerAuthPollTimer = null;
+  }
 });
 
 function createWindow() {
@@ -569,13 +580,66 @@ function registerIpc() {
       }
       exitDictationWindowMode();
       patchStatus({ state: "idle", message: "Ready", lastTranscript: result });
+      scheduleUsageCreditRefresh("transcription-complete");
     } else {
       logWarn("transcription:submit:empty-text", summarizeTranscriptionResult(result));
       exitDictationWindowMode();
       patchStatus({ state: "idle", message: "No speech detected" });
+      scheduleUsageCreditRefresh("transcription-empty");
     }
     return result;
   });
+}
+
+function configureWorkerAuthPolling() {
+  if (workerAuthPollTimer) {
+    return;
+  }
+
+  workerAuthPollTimer = setInterval(() => {
+    void refreshWorkerAuthFromPoll("interval");
+  }, WORKER_AUTH_POLL_INTERVAL_MS);
+  workerAuthPollTimer.unref?.();
+}
+
+async function refreshWorkerAuthFromPoll(reason) {
+  if (!desktopAuth.token || workerAuthPollInFlight) {
+    return;
+  }
+
+  if (status.state === "recording" || status.state === "transcribing" || status.state === "pasting") {
+    return;
+  }
+
+  workerAuthPollInFlight = true;
+  try {
+    logInfo("worker:auth-poll:start", { reason });
+    await refreshWorkerAuth();
+  } catch (error) {
+    logWarn("worker:auth-poll:failed", { reason, error: formatErrorForLog(error) });
+  } finally {
+    workerAuthPollInFlight = false;
+  }
+}
+
+function scheduleUsageCreditRefresh(reason) {
+  clearUsageCreditRefreshTimers();
+
+  for (const delayMs of POST_TRANSCRIPTION_USAGE_REFRESH_DELAYS_MS) {
+    const timer = setTimeout(() => {
+      usageCreditRefreshTimers = usageCreditRefreshTimers.filter((candidate) => candidate !== timer);
+      void refreshWorkerAuthFromPoll(reason);
+    }, delayMs);
+    timer.unref?.();
+    usageCreditRefreshTimers.push(timer);
+  }
+}
+
+function clearUsageCreditRefreshTimers() {
+  for (const timer of usageCreditRefreshTimers) {
+    clearTimeout(timer);
+  }
+  usageCreditRefreshTimers = [];
 }
 
 function configureAutoUpdates() {
@@ -848,6 +912,7 @@ async function startDeviceLogin() {
   }
 
   desktopAuth = { token: "", account: null, billing: null };
+  clearUsageCreditRefreshTimers();
   authGeneration += 1;
   saveDesktopAuth();
   patchStatus({
@@ -917,6 +982,7 @@ async function pollDeviceLogin(deviceCode, deviceName) {
 
 async function logoutDevice() {
   desktopAuth = { token: "", account: null, billing: null };
+  clearUsageCreditRefreshTimers();
   authGeneration += 1;
   saveDesktopAuth();
   patchStatus({

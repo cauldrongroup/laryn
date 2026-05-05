@@ -286,7 +286,7 @@ app.get("/health", (c) =>
 );
 
 app.get("/health/auth", async (c) => {
-  const authorized = await authorizeDesktop(c.req.raw, c.env);
+  const authorized = await authorizeDesktop(c.req.raw, c.env, { liveBilling: true });
   if (!authorized) {
     return c.json<TranscriptionError>({ error: "Unauthorized" }, 401);
   }
@@ -947,7 +947,11 @@ function isAuthSession(value: unknown): value is AuthSession {
   return isRecord(value) && isRecord(value.user) && typeof value.user.id === "string" && typeof value.user.email === "string" && typeof value.user.name === "string";
 }
 
-async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuthorization | null> {
+async function authorizeDesktop(
+  request: Request,
+  env: Env,
+  options: { liveBilling?: boolean } = {}
+): Promise<DesktopAuthorization | null> {
   const authorization = request.headers.get("authorization") ?? "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length).trim() : "";
   if (!token) {
@@ -967,7 +971,9 @@ async function authorizeDesktop(request: Request, env: Env): Promise<DesktopAuth
     return null;
   }
 
-  const billing = await getCachedBilling(env, device.user_id);
+  const billing = options.liveBilling
+    ? await getBilling(env, device.user_id)
+    : await getCachedBilling(env, device.user_id);
 
   return {
     deviceId: device.id,
