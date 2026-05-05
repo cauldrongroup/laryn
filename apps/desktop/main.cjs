@@ -38,6 +38,7 @@ let desktopSettings = {
 let activeHotkeyBinding = null;
 let updateCheckPromise = null;
 let updateReadyToInstall = false;
+let updateInstallRequested = false;
 let desktopAuth = {
   token: "",
   account: null,
@@ -94,32 +95,61 @@ if (process.platform === "win32") {
 }
 Menu.setApplicationMenu(null);
 
-app.whenReady().then(() => {
-  configureLogging();
-  loadDesktopSettings();
-  loadDesktopAuth();
-  loadDictionary();
-  logInfo("app:ready", {
-    workerUrl: config.workerUrl,
-    rendererUrl: config.rendererUrl || "packaged",
-    hasDesktopToken: Boolean(desktopAuth.token),
-    cleanupTier,
-    historyLoaded: false,
-    dictionaryCount: dictionaryCache?.length ?? 0
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    logInfo("app:second-instance", {
+      updateReady: isUpdateReadyToInstall(),
+      updateInstallRequested
+    });
+    if (isUpdateReadyToInstall()) {
+      installUpdateSafely("second-instance");
+      return;
+    }
+
+    showMainWindow("second-instance");
   });
-  configureMediaPermissions();
-  registerIpc();
-  createWindow();
-  createTray();
-  registerNativeHotkey();
-  configureAutoUpdates();
-  void refreshWorkerAuth();
-});
+
+  app.whenReady().then(() => {
+    configureLogging();
+    loadDesktopSettings();
+    loadDesktopAuth();
+    loadDictionary();
+    logInfo("app:ready", {
+      workerUrl: config.workerUrl,
+      rendererUrl: config.rendererUrl || "packaged",
+      hasDesktopToken: Boolean(desktopAuth.token),
+      cleanupTier,
+      historyLoaded: false,
+      dictionaryCount: dictionaryCache?.length ?? 0
+    });
+    configureMediaPermissions();
+    registerIpc();
+    createWindow();
+    createTray();
+    registerNativeHotkey();
+    configureAutoUpdates();
+    void refreshWorkerAuth();
+  });
+}
 
 app.on("window-all-closed", () => undefined);
 
+app.on("before-quit", (event) => {
+  if (!app.isPackaged || !isUpdateReadyToInstall() || updateInstallRequested) {
+    return;
+  }
+
+  logInfo("updates:install-on-quit");
+  event.preventDefault();
+  installUpdateSafely("app-quit");
+});
+
 app.on("before-quit-for-update", () => {
   shouldQuit = true;
+  updateInstallRequested = true;
   logInfo("updates:before-quit-for-update");
 });
 
@@ -292,21 +322,58 @@ function createTray() {
   }
   tray = new Tray(icon);
   tray.setToolTip("Laryn");
+  updateTrayMenu();
+}
+
+function updateTrayMenu() {
+  if (!tray) {
+    return;
+  }
+
+  const updateReady = isUpdateReadyToInstall();
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Show Laryn", click: () => mainWindow?.show() },
+      { label: "Show Laryn", click: () => showMainWindow("tray") },
       { label: "Start recording", click: startRecording },
       { label: "Stop recording", click: stopRecording },
+      ...(updateReady
+        ? [
+            { type: "separator" },
+            {
+              label: "Install update and restart",
+              click: () => installUpdateSafely("tray-install")
+            }
+          ]
+        : []),
       { type: "separator" },
       {
-        label: "Quit",
+        label: updateReady ? "Quit and install update" : "Quit",
         click: () => {
+          if (updateReady) {
+            installUpdateSafely("tray-quit");
+            return;
+          }
+
           shouldQuit = true;
           app.quit();
         }
       }
     ])
   );
+}
+
+function showMainWindow(reason) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+  sendMainWindowSnapshot(mainWindow);
+  logInfo("window:show", { reason });
 }
 
 function registerNativeHotkey() {
@@ -384,7 +451,7 @@ function registerIpc() {
   });
   ipcMain.handle("settings:set-hotkey", (_event, hotkey) => setHotkey(hotkey));
   ipcMain.handle("updates:check", () => checkForUpdates("manual"));
-  ipcMain.handle("updates:install", installUpdate);
+  ipcMain.handle("updates:install", () => installUpdate("renderer"));
   ipcMain.handle("worker:check", refreshWorkerAuth);
   ipcMain.handle("auth:start-device-login", startDeviceLogin);
   ipcMain.handle("auth:poll-device-login", (_event, deviceCode, deviceName) => pollDeviceLogin(deviceCode, deviceName));
@@ -534,6 +601,7 @@ function configureAutoUpdates() {
   autoUpdater.on("update-available", (info) => {
     logInfo("updates:available", summarizeUpdateInfo(info));
     updateReadyToInstall = false;
+    updateInstallRequested = false;
     patchStatus({
       updateStatus: "downloading",
       updateMessage: `Downloading update ${info?.version || ""}`.trim(),
@@ -543,6 +611,7 @@ function configureAutoUpdates() {
   autoUpdater.on("update-not-available", (info) => {
     logInfo("updates:not-available", summarizeUpdateInfo(info));
     updateReadyToInstall = false;
+    updateInstallRequested = false;
     patchStatus({
       updateStatus: "current",
       updateMessage: "Laryn is up to date",
@@ -564,20 +633,22 @@ function configureAutoUpdates() {
   autoUpdater.on("update-downloaded", (info) => {
     logInfo("updates:downloaded", summarizeUpdateInfo(info));
     updateReadyToInstall = true;
+    updateInstallRequested = false;
     patchStatus({
       updateStatus: "ready",
-      updateMessage: "Update ready. Restart Laryn to install it.",
+      updateMessage: "Update ready. Install it from Settings or quit Laryn from the tray.",
       updateVersion: info?.version
     });
     if (Notification.isSupported()) {
       new Notification({
         title: "Laryn update ready",
-        body: "The update will install the next time Laryn restarts."
+        body: "Click Install update in Settings, or quit Laryn from the tray to apply it."
       }).show();
     }
   });
   autoUpdater.on("error", (error) => {
     logError("updates:error", error);
+    updateInstallRequested = false;
     patchStatus({
       updateStatus: "error",
       updateMessage: `Update check failed: ${formatErrorMessage(error)}`
@@ -640,7 +711,7 @@ async function checkForUpdates(source) {
   return status;
 }
 
-function installUpdate() {
+function installUpdate(source = "manual") {
   if (!app.isPackaged) {
     patchStatus({
       updateStatus: "disabled",
@@ -649,11 +720,17 @@ function installUpdate() {
     return status;
   }
 
-  if (!updateReadyToInstall && status.updateStatus !== "ready") {
+  if (!isUpdateReadyToInstall()) {
     throw new Error("No downloaded update is ready to install.");
   }
 
-  logInfo("updates:install-requested");
+  if (updateInstallRequested) {
+    logInfo("updates:install-request-joined", { source });
+    return status;
+  }
+
+  logInfo("updates:install-requested", { source });
+  updateInstallRequested = true;
   shouldQuit = true;
   patchStatus({
     updateStatus: "restarting",
@@ -662,8 +739,10 @@ function installUpdate() {
 
   setImmediate(() => {
     try {
+      logInfo("updates:quit-and-install");
       autoUpdater.quitAndInstall(false, true);
     } catch (error) {
+      updateInstallRequested = false;
       shouldQuit = false;
       logError("updates:install-failed", error);
       patchStatus({
@@ -674,6 +753,26 @@ function installUpdate() {
   });
 
   return status;
+}
+
+function installUpdateSafely(source) {
+  try {
+    return installUpdate(source);
+  } catch (error) {
+    logError("updates:install-rejected", error, { source });
+    patchStatus({
+      updateStatus: isUpdateReadyToInstall() ? "ready" : "error",
+      updateMessage: isUpdateReadyToInstall()
+        ? `Could not start update install: ${formatErrorMessage(error)}`
+        : `No downloaded update is ready to install: ${formatErrorMessage(error)}`
+    });
+    showMainWindow("update-install-error");
+    return status;
+  }
+}
+
+function isUpdateReadyToInstall() {
+  return updateReadyToInstall || status.updateStatus === "ready";
 }
 
 function loadPackageInfo(baseDir) {
@@ -1147,6 +1246,9 @@ function getCenteredOverlayBounds(display, width, height) {
 
 function patchStatus(next) {
   Object.assign(status, next);
+  if (Object.prototype.hasOwnProperty.call(next, "updateStatus")) {
+    updateTrayMenu();
+  }
   queueStatusBroadcast();
 
   if (next.state === "error" && Notification.isSupported()) {
