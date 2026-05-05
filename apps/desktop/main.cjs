@@ -58,6 +58,8 @@ const MAX_DICTIONARY_REPLACEMENT_LENGTH = 120;
 const WORKER_AUTH_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const POST_TRANSCRIPTION_USAGE_REFRESH_DELAYS_MS = [5_000, 20_000, 60_000];
 const DEFERRED_USAGE_REFRESH_RETRY_MS = 5_000;
+const INSTALL_UPDATE_SILENTLY = true;
+const RUN_AFTER_SILENT_UPDATE = true;
 
 const hotkeyState = {
   ctrlDown: false,
@@ -823,7 +825,7 @@ function installUpdate(source = "manual") {
   setImmediate(() => {
     try {
       logInfo("updates:quit-and-install");
-      autoUpdater.quitAndInstall(false, true);
+      autoUpdater.quitAndInstall(INSTALL_UPDATE_SILENTLY, RUN_AFTER_SILENT_UPDATE);
     } catch (error) {
       updateInstallRequested = false;
       shouldQuit = false;
