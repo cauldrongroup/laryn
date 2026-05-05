@@ -4,6 +4,7 @@
   "private": true,
   "description": "Global speech-to-text desktop client for Laryn.",
   "author": "Laryn",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {

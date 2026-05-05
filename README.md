@@ -139,7 +139,11 @@ The requested binding is `Ctrl + Win`. Windows and Electron can be inconsistent 
 
 ## Open source readiness
 
-Before making the repository public, choose and add a project license. Keep generated secrets in ignored files only, especially `apps/worker/.dev.vars` and `apps/desktop/.env`.
+Laryn is licensed under the Apache License, Version 2.0. See `LICENSE`.
+
+The source license does not grant permission to use Laryn names, logos, domains, hosted services, production infrastructure, API credentials, signing keys, or private configuration. See `NOTICE` and `TRADEMARKS.md`.
+
+Keep generated secrets in ignored files only, especially `apps/worker/.dev.vars` and `apps/desktop/.env`.
 
 Run the redacted secret scanner before publishing or merging release changes:
 
