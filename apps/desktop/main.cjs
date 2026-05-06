@@ -1,15 +1,13 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, clipboard, nativeImage, Notification, shell, screen, safeStorage, session } = require("electron");
 const { autoUpdater } = require("electron-updater");
-const { execFile } = require("node:child_process");
-const { promisify } = require("node:util");
 const fs = require("node:fs");
 const path = require("node:path");
+const { keyboard, Key } = require("@nut-tree-fork/nut-js");
 const { EventType, uIOhook, UiohookKey } = require("uiohook-napi");
 const { loadConfig, normalizeCleanupTier } = require("./config.cjs");
 const { createBufferedLogSink } = require("./src/main/buffered-log-sink.cjs");
 const { bindFirstRevealTrigger } = require("./src/main/window-reveal.cjs");
 
-const execFileAsync = promisify(execFile);
 const config = loadConfig(__dirname);
 const packageInfo = loadPackageInfo(__dirname);
 
@@ -1177,34 +1175,34 @@ function formatWorkerErrorMessage(payload, statusCode) {
 
 async function pasteText(text) {
   logInfo("paste:start", {
-    textLength: text.length
+    textLength: text.length,
+    platform: process.platform
   });
   clipboard.writeText(text);
   await new Promise((resolve) => setTimeout(resolve, 220));
-  const pasteScript = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class Keyboard {
-  [DllImport("user32.dll", SetLastError=true)]
-  public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-}
-"@
-[Keyboard]::keybd_event(0x11,0,0,[UIntPtr]::Zero)
-[Keyboard]::keybd_event(0x56,0,0,[UIntPtr]::Zero)
-Start-Sleep -Milliseconds 30
-[Keyboard]::keybd_event(0x56,0,2,[UIntPtr]::Zero)
-[Keyboard]::keybd_event(0x11,0,2,[UIntPtr]::Zero)
-`;
-  const { stdout, stderr } = await execFileAsync("powershell.exe", [
-    "-NoProfile",
-    "-STA",
-    "-Command",
-    pasteScript
-  ]);
-  logInfo("paste:powershell-complete", {
-    stdout: stdout.trim().slice(0, 200),
-    stderr: stderr.trim().slice(0, 200)
+
+  const modifier = process.platform === "darwin" ? Key.LeftCmd : Key.LeftControl;
+  keyboard.config.autoDelayMs = 10;
+
+  let pasteShortcutPressed = false;
+  try {
+    await keyboard.pressKey(modifier, Key.V);
+    pasteShortcutPressed = true;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  } finally {
+    if (pasteShortcutPressed) {
+      try {
+        await keyboard.releaseKey(modifier, Key.V);
+      } catch (error) {
+        logWarn("paste:keyboard-release-failed", {
+          message: error instanceof Error ? error.message : String(error)
+        });
+      }
+    }
+  }
+
+  logInfo("paste:keyboard-complete", {
+    modifier: process.platform === "darwin" ? "cmd" : "ctrl"
   });
 }
 
