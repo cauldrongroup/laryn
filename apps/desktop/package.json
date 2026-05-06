@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@laryn/shared": "workspace:*",
+    "@nut-tree-fork/nut-js": "^4.2.6",
     "@vitejs/plugin-react": "^5.0.0",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.511.0",
@@ -59,6 +60,7 @@
     ],
     "icon": "assets/logo.png",
     "asarUnpack": [
+      "node_modules/@nut-tree-fork/libnut*/**",
       "node_modules/uiohook-napi/**",
       "node_modules/node-gyp-build/**"
     ],
